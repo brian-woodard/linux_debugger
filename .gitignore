@@ -1,2 +1,5 @@
+*.o
+bin/debugger
 src/a.out
 src/debugger
+src/imgui.ini
