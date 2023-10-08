@@ -12,11 +12,11 @@ void run_target(const char* program)
 
    if (ptrace(PTRACE_TRACEME, 0, 0, 0) < 0)
    {
-       perror("ptrace");
-       return;
+      perror("ptrace");
+      return;
    }
 
-    execl(program, program, 0);
+   execl(program, program, 0);
 }
 
 void run_debugger(pid_t pid)
@@ -44,8 +44,8 @@ void run_debugger(pid_t pid)
       // Make the child execute another instruction
       if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
       {
-          perror("ptrace");
-          return;
+         perror("ptrace");
+         return;
       }
 
       // Wait for child to stop on its next instruction
@@ -61,19 +61,19 @@ int main(int argc, char** argv)
 
    if (argc < 2)
    {
-       fprintf(stderr, "Expected a program name as argument\n");
-       return -1;
+      fprintf(stderr, "Expected a program name as argument\n");
+      return -1;
    }
 
    child_pid = fork();
    if (child_pid == 0)
-       run_target(argv[1]);
+      run_target(argv[1]);
    else if (child_pid > 0)
-       run_debugger(child_pid);
+      run_debugger(child_pid);
    else
    {
-       perror("fork");
-       return -1;
+      perror("fork");
+      return -1;
    }
 
    return 0;
