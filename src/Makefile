@@ -25,6 +25,9 @@ CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends `pkg-config --cflags glfw3`
 all: $(EXE)
 	@echo Build complete
 
+console:
+	g++ debugger.cpp -o debugger
+
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 
