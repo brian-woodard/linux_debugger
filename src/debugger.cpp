@@ -4,10 +4,14 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/wait.h>
+#include <sys/personality.h>
+#include <errno.h>
+#include <vector>
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -21,6 +25,9 @@ typedef int64_t  s64;
 
 typedef float    f32;
 typedef double   f64;
+
+const u8  SW_INTERRUPT_3 = 0xcc;
+const s32 MAX_COMMAND = 1024;
 
 enum eDbgCommand
 {
@@ -42,24 +49,91 @@ struct TDebugState
    s32   WaitOptions;
 };
 
-TDebugState debug_state;
+struct TBreakpoint
+{
+   u64  Address;
+   bool Enabled;
+   u8   SavedData;
+};
+
+TDebugState              debug_state;
+std::vector<TBreakpoint> breakpoints;
+
+void AddBreakpoint(TDebugState State, u64 Address)
+{
+   TBreakpoint bp = {};
+
+   errno = 0;
+   u64 data = ptrace(PTRACE_PEEKDATA, State.ChildPid, Address, nullptr);
+
+   if (errno == 0)
+   {
+      bp.Address = Address;
+      bp.Enabled = true;
+      bp.SavedData = data; // save lsb
+
+      u64 data_w_int = ((data & ~0xff) | SW_INTERRUPT_3);
+      ptrace(PTRACE_POKEDATA, State.ChildPid, Address, data_w_int);
+
+      breakpoints.push_back(bp);
+   }
+   else
+   {
+      fprintf(stderr, "Error peek data %s (%d)\n", strerror(errno), errno);
+   }
+}
+
+void DeleteBreakpoint()
+{
+
+}
 
 eDbgCommand GetCommand()
 {
-   char input[1024] = {};
+   char input[MAX_COMMAND] = {};
+   std::vector<char*> strings;
 
    printf("\ndbg> ");
-   scanf("%s", input);
+   fgets(input, MAX_COMMAND-1, stdin);
 
-   printf("got input [%s]\n", input);
+   // trim newline
+   int length = strlen(input);
+   if (input[length-1] == '\n')
+   {
+      input[length-1] = 0;
+      length--;
+   }
 
-   if (strcmp(input, "c") == 0 || strcmp(input, "cont") == 0 || strcmp(input, "continue") == 0)
+   // split strings
+   bool push_string = false;
+   strings.push_back(input);
+   for (int i = 0; i < length; i++)
+   {
+      if (input[i] == ' ')
+      {
+         push_string = true;
+         input[i] = 0;
+      }
+      else if (push_string)
+      {
+         strings.push_back(&input[i]);
+         push_string = false;
+      }
+   }
+
+   if (strcmp(strings[0], "c") == 0 || strcmp(strings[0], "cont") == 0 || strcmp(strings[0], "continue") == 0)
    {
       return DEBUG_CMD_CONTINUE;
    }
-   else if (strcmp(input, "q") == 0 || strcmp(input, "quit") == 0)
+   else if (strcmp(strings[0], "q") == 0 || strcmp(strings[0], "quit") == 0)
    {
       return DEBUG_CMD_QUIT;
+   }
+   else if (strcmp(strings[0], "b") == 0 || strcmp(strings[0], "break") == 0)
+   {
+      u64 addr = strtoll(strings[1], 0, 16);
+      AddBreakpoint(debug_state, addr);
+      return DEBUG_CMD_SET_BREAKPOINT;
    }
 
    return DEBUG_CMD_UNKNOWN;
@@ -140,22 +214,23 @@ void RunDebugger()
 
 int main(int argc, char** argv)
 {
-   pid_t child_pid;
-
    if (argc < 2)
    {
       fprintf(stderr, "Expected a program name as argument\n");
       return -1;
    }
 
-   child_pid = fork();
-   if (child_pid == 0)
+   // reserve some initial max amount of breakpoints
+   breakpoints.reserve(64);
+
+   debug_state.ChildPid = fork();
+   if (debug_state.ChildPid == 0)
    {
+      personality(ADDR_NO_RANDOMIZE);
       RunTarget(argv[1]);
    }
-   else if (child_pid > 0)
+   else if (debug_state.ChildPid > 0)
    {
-      debug_state.ChildPid = child_pid;
       debug_state.InstructionsExecuted = 0;
 
       RunDebugger();
