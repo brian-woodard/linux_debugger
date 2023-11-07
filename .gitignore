@@ -4,6 +4,7 @@ bin/debugger
 bin/imgui.ini
 src/a.out
 src/debugger
+src/hello
 src/imgui.ini
 vendor/glfw-3.3.8/tests
 vendor/glfw-3.3.8/docs
