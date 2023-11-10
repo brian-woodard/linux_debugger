@@ -76,33 +76,33 @@ enum eRegister
 
 const char* RegisterStr[] =
 {
-   "R15",
-   "R14",
-   "R13",
-   "R12",
-   "RBP",
-   "RBX",
-   "R11",
-   "R10",
-   "R9",
-   "R8",
-   "RAX",
-   "RCX",
-   "RDX",
-   "RSI",
-   "RDI",
-   "ORIG RAX",
-   "RIP",
-   "CS",
-   "EFLAGS",
-   "RSP",
-   "SS",
-   "FS BASE",
-   "GS BASE",
-   "DS",
-   "ES",
-   "FS",
-   "GS",
+   "r15",
+   "r14",
+   "r13",
+   "r12",
+   "rbp",
+   "rbx",
+   "r11",
+   "r10",
+   "r9",
+   "r8",
+   "rax",
+   "rcx",
+   "rdx",
+   "rsi",
+   "rdi",
+   "orig_rax",
+   "rip",
+   "cs",
+   "eflags",
+   "rsp",
+   "ss",
+   "fs_base",
+   "gs_base",
+   "ds",
+   "es",
+   "fs",
+   "gs",
    "Unknown Register"
 };
 
@@ -307,16 +307,77 @@ eDebugCommand GetCommand()
    }
    else if (strcmp(strings[0], "register") == 0)
    {
+
+      if (strings.size() < 2)
+      {
+         printf("Invalid cmd:\n");
+         printf("  register read [register_name]\n");
+         printf("  register write [register_name] [value]\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
       // TODO: Break this out of here, this should just handle parsing
       if (strcmp(strings[1], "read") == 0)
       {
-         u64 rip = GetRegister(REGISTER_RIP);
-         printf("Register %s contents: 0x%x\n", RegisterStr[REGISTER_RIP], rip);
+         u64         value = 0;
+         const char* register_name = nullptr;
+
+         if (strings.size() != 3)
+         {
+            printf("Invalid cmd: register read [register_name]\n");
+            return DEBUG_CMD_UNKNOWN;
+         }
+
+         for (int i = 0; i < REGISTER_COUNT; i++)
+         {
+            if (strcmp(strings[2], RegisterStr[i]) == 0)
+            {
+               value = GetRegister((eRegister)i);
+               register_name = RegisterStr[i];
+            }
+         }
+
+         if (!register_name)
+         {
+            printf("Unknown register\n");
+            return DEBUG_CMD_UNKNOWN;
+         }
+
+         printf("Register %s contents: 0x%x\n", register_name, value);
+      }
+      else if (strcmp(strings[1], "write") == 0)
+      {
+         u64       value = strtoll(strings[3], 0, 16);
+         eRegister register_name = REGISTER_COUNT;
+
+         if (strings.size() != 4)
+         {
+            printf("Invalid cmd: register write [register_name] [value]\n");
+            return DEBUG_CMD_UNKNOWN;
+         }
+
+         for (int i = 0; i < REGISTER_COUNT; i++)
+         {
+            if (strcmp(strings[2], RegisterStr[i]) == 0)
+            {
+               register_name = (eRegister)i;
+            }
+         }
+
+         if (register_name == REGISTER_COUNT)
+         {
+            printf("Unknown register\n");
+            return DEBUG_CMD_UNKNOWN;
+         }
+
+         SetRegister(register_name, value);
+         printf("Wrote Register %s contents: 0x%x\n", RegisterStr[register_name], value);
       }
 
       return DEBUG_CMD_UNKNOWN;
    }
 
+   printf("Unknown command\n");
    return DEBUG_CMD_UNKNOWN;
 };
 
