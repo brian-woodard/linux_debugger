@@ -18,6 +18,29 @@ typedef int64_t  s64;
 typedef float    f32;
 typedef double   f64;
 
+const char* SectionTypeStr[] =
+{
+   "Null",
+   "Program data",
+   "Symbol table",
+   "String table",
+   "Relocation entries with addends",
+   "Symbol hash table",
+   "Dynamic linking information",
+   "Notes",
+   "Program space with no data (bss)",
+   "Relocation entries, no addends",
+   "Reserved",
+   "Dynamic linker symbol table",
+   "Unknown",
+   "Unknown",
+   "Array of constructors",
+   "Array of destructors",
+   "Array of pre-constructors",
+   "Section group",
+   "Extended section indices"
+};
+
 struct TBuffer
 {
    u8* Data;
@@ -81,6 +104,25 @@ void DumpElf32(TBuffer Buffer)
    printf("e_shstrndx:  %d\n", elf_header->e_shstrndx);
 }
 
+void DumpSectionHeader64(Elf64_Shdr* SectionHeaders, int NumHeaders)
+{
+   printf("--- ELF Section Header, %d headers size %d ---\n", NumHeaders, NumHeaders*sizeof(Elf64_Shdr));
+   for (int i = 0; i < NumHeaders; i++)
+   {
+      printf("--- Section Header %d ---\n", i+1);
+      printf("sh_name:      %d\n", SectionHeaders[i].sh_name);
+      printf("sh_type:      %d (%s)\n", SectionHeaders[i].sh_type, SectionTypeStr[SectionHeaders[i].sh_type]);
+      printf("sh_flags:     %d\n", SectionHeaders[i].sh_flags);
+      printf("sh_addr:      0x%x\n", SectionHeaders[i].sh_addr);
+      printf("sh_offset:    0x%x\n", SectionHeaders[i].sh_offset);
+      printf("sh_size:      %d\n", SectionHeaders[i].sh_size);
+      printf("sh_link:      %d\n", SectionHeaders[i].sh_link);
+      printf("sh_info:      %d\n", SectionHeaders[i].sh_info);
+      printf("sh_addralign: %d\n", SectionHeaders[i].sh_addralign);
+      printf("sh_entsize:   %d\n", SectionHeaders[i].sh_entsize);
+   }
+}
+
 void DumpElf64(TBuffer Buffer)
 {
    Elf64_Ehdr* elf_header = (Elf64_Ehdr*)Buffer.Data;
@@ -101,6 +143,8 @@ void DumpElf64(TBuffer Buffer)
    printf("e_shentsize: %d\n", elf_header->e_shentsize);
    printf("e_shnum:     %d\n", elf_header->e_shnum);
    printf("e_shstrndx:  %d\n", elf_header->e_shstrndx);
+
+   DumpSectionHeader64((Elf64_Shdr*)&Buffer.Data[elf_header->e_shoff], elf_header->e_shnum);
 }
 
 int main(int argc, char** argv)
