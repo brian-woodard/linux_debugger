@@ -223,12 +223,17 @@ int Continue()
    return bp;
 }
 
+void StepSingle()
+{
+   ptrace(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
+}
+
 void StepOverBreakpoint(int Breakpoint)
 {
    u64 data = ptrace(PTRACE_PEEKDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, nullptr);
    ptrace(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].SavedData, nullptr);
 
-   ptrace(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
+   StepSingle();
 
    // re-enable breakbpoint
    ptrace(PTRACE_POKEDATA, debug_state.ChildPid, data, nullptr);
@@ -288,6 +293,10 @@ eDebugCommand GetCommand()
    else if (strcmp(strings[0], "q") == 0 || strcmp(strings[0], "quit") == 0)
    {
       return DEBUG_CMD_QUIT;
+   }
+   else if (strcmp(strings[0], "s") == 0 || strcmp(strings[0], "step") == 0)
+   {
+      return DEBUG_CMD_STEP_SINGLE;
    }
    else if (strcmp(strings[0], "b") == 0 || strcmp(strings[0], "break") == 0)
    {
@@ -359,6 +368,10 @@ void RunDebugger()
          if (bp != -1)
             StepOverBreakpoint(bp);
          bp = Continue();
+      }
+      else if (cmd == DEBUG_CMD_STEP_SINGLE)
+      {
+         StepSingle();
       }
       else
       {

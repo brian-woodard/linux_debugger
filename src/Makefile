@@ -24,12 +24,19 @@ CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends `pkg-config --cflags glfw3`
 
 all: $(EXE)
 	@echo Build complete
+	make console
+	make elfdump
 
-console:
+console: debugger.cpp
 	g++ debugger.cpp -o debugger
+
+elfdump: elfdump.cpp
+	g++ elfdump.cpp -o elfdump
 
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 
 clean:
 	rm -f $(EXE) $(OBJS)
+	rm -f debugger
+	rm -f elfdump
