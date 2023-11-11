@@ -14,6 +14,8 @@
 #include <vector>
 #include <assert.h>
 
+#include "PrintData.cpp"
+
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -47,6 +49,8 @@ enum eDebugCommand
    DEBUG_CMD_CONTINUE,
    DEBUG_CMD_SET_BREAKPOINT,
    DEBUG_CMD_DELETE_BREAKPOINT,
+   DEBUG_CMD_ENABLE_BREAKPOINT,
+   DEBUG_CMD_DISABLE_BREAKPOINT,
    DEBUG_CMD_LIST_BREAKPOINTS,
    DEBUG_CMD_STEP_OVER,
    DEBUG_CMD_STEP_INTO,
@@ -137,7 +141,7 @@ struct TDebugState
 struct TBreakpoint
 {
    u64  Address;
-   u64  SavedData;
+   u8   SavedData;
    bool Enabled;
 };
 
@@ -182,12 +186,23 @@ bool SetRegister(eRegister Register, u64 Value)
    return result;
 }
 
+u64 GetData(u64 Address)
+{
+   u64 data = PTRACE(PTRACE_PEEKDATA, debug_state.ChildPid, Address, nullptr);
+
+   return data;
+}
+
+void SetData(u64 Address, u64 Value)
+{
+   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, Address, Value);
+}
+
 void AddBreakpoint(TDebugState State, u64 Address)
 {
    TBreakpoint bp = {};
 
-   errno = 0;
-   u64 data = PTRACE(PTRACE_PEEKDATA, State.ChildPid, Address, nullptr);
+   u64 data = GetData(Address);
 
    if (errno == 0)
    {
@@ -196,7 +211,7 @@ void AddBreakpoint(TDebugState State, u64 Address)
       bp.SavedData = data;
 
       u64 data_w_int = ((data & ~0xff) | SW_INTERRUPT_3);
-      PTRACE(PTRACE_POKEDATA, State.ChildPid, Address, data_w_int);
+      SetData(Address, data_w_int);
 
       breakpoints.push_back(bp);
    }
@@ -210,18 +225,43 @@ void DeleteBreakpoint(TDebugState State, u64 Index)
 {
    assert(Index < breakpoints.size());
 
-   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Index].Address, breakpoints[Index].SavedData);
+   u64 data = (GetData(breakpoints[Index].Address) & ~0xff) | breakpoints[Index].SavedData;
+   SetData(breakpoints[Index].Address, data);
 
    if (debug_state.BreakpointHit == Index)
    {
       debug_state.BreakpointHit = -1;
    }
-   else if (Index < debug_state.BreakpointHit)
+   else if (debug_state.BreakpointHit != -1 && Index < debug_state.BreakpointHit)
    {
       debug_state.BreakpointHit -= 1;
    }
 
    breakpoints.erase(breakpoints.begin() + Index);
+}
+
+void EnableBreakpoint(TDebugState State, u64 Index)
+{
+   assert(Index < breakpoints.size());
+
+   if (!breakpoints[Index].Enabled)
+   {
+      u64 data_w_int = ((GetData(breakpoints[Index].Address) & ~0xff) | SW_INTERRUPT_3);
+      SetData(breakpoints[Index].Address, data_w_int);
+      breakpoints[Index].Enabled = true;
+   }
+}
+
+void DisableBreakpoint(TDebugState State, u64 Index)
+{
+   assert(Index < breakpoints.size());
+
+   if (breakpoints[Index].Enabled)
+   {
+      u64 data = (GetData(breakpoints[Index].Address) & ~0xff) | breakpoints[Index].SavedData;
+      SetData(breakpoints[Index].Address, data);
+      breakpoints[Index].Enabled = false;
+   }
 }
 
 void ListBreakpoints()
@@ -231,6 +271,16 @@ void ListBreakpoints()
    {
       printf("  Breakpoint % 4d: 0x%x %s\n", i+1, breakpoints[i].Address, (!breakpoints[i].Enabled) ? "(disabled)" : "");
    }
+
+   // print some debug
+   u64 data[7];
+   u64 addr = 0x401000;
+   for (int i = 0; i < 7; i++)
+   {
+      data[i] = GetData(addr);
+      addr += 8;
+   }
+   printf("%s\n", CPrintData::GetDataAsString((char*)data, sizeof(data)));
 }
 
 int CheckBreakpoints()
@@ -274,26 +324,24 @@ void StepSingle()
    {
       StepOverBreakpoint(debug_state.BreakpointHit);
    }
-   else
-   {
-      PTRACE(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
-      waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
-   }
+
+   PTRACE(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
+   waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
 }
 
 void StepOverBreakpoint(int Breakpoint)
 {
    assert(Breakpoint >= 0 && Breakpoint < breakpoints.size());
 
-   u64 data = PTRACE(PTRACE_PEEKDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, nullptr);
-   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, breakpoints[Breakpoint].SavedData);
+   u64 data = (GetData(breakpoints[Breakpoint].Address) & ~0xff) | breakpoints[Breakpoint].SavedData;
+   SetData(breakpoints[Breakpoint].Address, data);
 
-   StepSingle();
    debug_state.BreakpointHit = -1;
+   StepSingle();
 
    // re-enable breakpoint
-   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, data);
-   Continue();
+   u64 data_w_int = ((GetData(breakpoints[Breakpoint].Address) & ~0xff) | SW_INTERRUPT_3);
+   SetData(breakpoints[Breakpoint].Address, data_w_int);
 }
 
 void RunTarget(const char* program)
@@ -385,6 +433,46 @@ eDebugCommand GetCommand()
 
       DeleteBreakpoint(debug_state, index-1);
       return DEBUG_CMD_DELETE_BREAKPOINT;
+   }
+   else if (strcmp(strings[0], "enable") == 0)
+   {
+      if (strings.size() != 2)
+      {
+         printf("Invalid cmd: enable [breakpoint]\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      // TODO: Break this out of here, this should just handle parsing
+      u64 index = strtoll(strings[1], 0, 10);
+
+      if (index-1 >= breakpoints.size())
+      {
+         printf("Invalid cmd: unknown breakpoint %d\n", index);
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      EnableBreakpoint(debug_state, index-1);
+      return DEBUG_CMD_ENABLE_BREAKPOINT;
+   }
+   else if (strcmp(strings[0], "disable") == 0)
+   {
+      if (strings.size() != 2)
+      {
+         printf("Invalid cmd: disable [breakpoint]\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      // TODO: Break this out of here, this should just handle parsing
+      u64 index = strtoll(strings[1], 0, 10);
+
+      if (index-1 >= breakpoints.size())
+      {
+         printf("Invalid cmd: unknown breakpoint %d\n", index);
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      DisableBreakpoint(debug_state, index-1);
+      return DEBUG_CMD_DISABLE_BREAKPOINT;
    }
    else if (strcmp(strings[0], "list") == 0)
    {
