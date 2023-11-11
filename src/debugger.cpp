@@ -12,6 +12,7 @@
 #include <sys/personality.h>
 #include <errno.h>
 #include <vector>
+#include <assert.h>
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -26,6 +27,17 @@ typedef int64_t  s64;
 typedef float    f32;
 typedef double   f64;
 
+#define PTRACE(Request, Pid, Addr, Data) ({ \
+   long retval = 0; \
+   errno = 0; \
+   retval = ptrace(Request, Pid, Addr, Data); \
+   if (errno) \
+   { \
+      fprintf(stderr, "Error: ptrace error %s (%d) at %s:%d %s\n", strerror(errno), errno, __FILE__, __LINE__, __func__); \
+   } \
+   retval; \
+})
+
 const u8  SW_INTERRUPT_3 = 0xcc;
 const s32 MAX_COMMAND    = 1024;
 
@@ -34,6 +46,8 @@ enum eDebugCommand
    DEBUG_CMD_UNKNOWN,
    DEBUG_CMD_CONTINUE,
    DEBUG_CMD_SET_BREAKPOINT,
+   DEBUG_CMD_DELETE_BREAKPOINT,
+   DEBUG_CMD_LIST_BREAKPOINTS,
    DEBUG_CMD_STEP_OVER,
    DEBUG_CMD_STEP_INTO,
    DEBUG_CMD_STEP_SINGLE,
@@ -115,6 +129,7 @@ union TRegister
 struct TDebugState
 {
    pid_t ChildPid;
+   s32   BreakpointHit;
    s32   WaitStatus;
    s32   WaitOptions;
 };
@@ -129,13 +144,15 @@ struct TBreakpoint
 TDebugState              debug_state;
 std::vector<TBreakpoint> breakpoints;
 
+void StepOverBreakpoint(int Breakpoint);
+
 u64 GetRegister(eRegister Register)
 {
    TRegister registers;
    u64       result = 0;
    long      status;
 
-   status = ptrace(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
+   status = PTRACE(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
 
    if (status != -1)
    {
@@ -151,13 +168,13 @@ bool SetRegister(eRegister Register, u64 Value)
    bool      result = false;
    long      status;
 
-   status = ptrace(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
+   status = PTRACE(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
 
    if (status != -1)
    {
       registers.RegArray[Register] = Value;
 
-      status = ptrace(PTRACE_SETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
+      status = PTRACE(PTRACE_SETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
 
       result = (status != -1);
    }
@@ -170,7 +187,7 @@ void AddBreakpoint(TDebugState State, u64 Address)
    TBreakpoint bp = {};
 
    errno = 0;
-   u64 data = ptrace(PTRACE_PEEKDATA, State.ChildPid, Address, nullptr);
+   u64 data = PTRACE(PTRACE_PEEKDATA, State.ChildPid, Address, nullptr);
 
    if (errno == 0)
    {
@@ -179,7 +196,7 @@ void AddBreakpoint(TDebugState State, u64 Address)
       bp.SavedData = data;
 
       u64 data_w_int = ((data & ~0xff) | SW_INTERRUPT_3);
-      ptrace(PTRACE_POKEDATA, State.ChildPid, Address, data_w_int);
+      PTRACE(PTRACE_POKEDATA, State.ChildPid, Address, data_w_int);
 
       breakpoints.push_back(bp);
    }
@@ -189,19 +206,44 @@ void AddBreakpoint(TDebugState State, u64 Address)
    }
 }
 
-void DeleteBreakpoint()
+void DeleteBreakpoint(TDebugState State, u64 Index)
 {
+   assert(Index < breakpoints.size());
 
+   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Index].Address, breakpoints[Index].SavedData);
+
+   if (debug_state.BreakpointHit == Index)
+   {
+      debug_state.BreakpointHit = -1;
+   }
+   else if (Index < debug_state.BreakpointHit)
+   {
+      debug_state.BreakpointHit -= 1;
+   }
+
+   breakpoints.erase(breakpoints.begin() + Index);
+}
+
+void ListBreakpoints()
+{
+   printf("Number of breakpoints: %d\n", breakpoints.size());
+   for (size_t i = 0; i < breakpoints.size(); i++)
+   {
+      printf("  Breakpoint % 4d: 0x%x %s\n", i+1, breakpoints[i].Address, (!breakpoints[i].Enabled) ? "(disabled)" : "");
+   }
 }
 
 int CheckBreakpoints()
 {
    u64 rip = GetRegister(REGISTER_RIP) - 1;
 
-   for (int i = 0; i < breakpoints.size(); i++)
+   for (size_t i = 0; i < breakpoints.size(); i++)
    {
       if (breakpoints[i].Address == rip)
       {
+         debug_state.BreakpointHit = i;
+         // back up one instruction
+         SetRegister(REGISTER_RIP, rip);
          return i;
       }
    }
@@ -211,7 +253,10 @@ int CheckBreakpoints()
 
 int Continue()
 {
-   ptrace(PTRACE_CONT, debug_state.ChildPid, nullptr, nullptr);
+   if (debug_state.BreakpointHit != -1)
+      StepOverBreakpoint(debug_state.BreakpointHit);
+
+   PTRACE(PTRACE_CONT, debug_state.ChildPid, nullptr, nullptr);
    waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
 
    int bp = CheckBreakpoints();
@@ -225,18 +270,29 @@ int Continue()
 
 void StepSingle()
 {
-   ptrace(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
+   if (debug_state.BreakpointHit != -1)
+   {
+      StepOverBreakpoint(debug_state.BreakpointHit);
+   }
+   else
+   {
+      PTRACE(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
+      waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
+   }
 }
 
 void StepOverBreakpoint(int Breakpoint)
 {
-   u64 data = ptrace(PTRACE_PEEKDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, nullptr);
-   ptrace(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].SavedData, nullptr);
+   assert(Breakpoint >= 0 && Breakpoint < breakpoints.size());
+
+   u64 data = PTRACE(PTRACE_PEEKDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, nullptr);
+   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, breakpoints[Breakpoint].SavedData);
 
    StepSingle();
+   debug_state.BreakpointHit = -1;
 
-   // re-enable breakbpoint
-   ptrace(PTRACE_POKEDATA, debug_state.ChildPid, data, nullptr);
+   // re-enable breakpoint
+   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, breakpoints[Breakpoint].Address, data);
    Continue();
 }
 
@@ -244,9 +300,8 @@ void RunTarget(const char* program)
 {
    printf("Run target %s\n", program);
 
-   if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
+   if (PTRACE(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
    {
-      perror("ptrace");
       return;
    }
 
@@ -300,14 +355,49 @@ eDebugCommand GetCommand()
    }
    else if (strcmp(strings[0], "b") == 0 || strcmp(strings[0], "break") == 0)
    {
+      if (strings.size() != 2)
+      {
+         printf("Invalid cmd: break [address]\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
       // TODO: Break this out of here, this should just handle parsing
       u64 addr = strtoll(strings[1], 0, 16);
       AddBreakpoint(debug_state, addr);
       return DEBUG_CMD_SET_BREAKPOINT;
    }
+   else if (strcmp(strings[0], "delete") == 0)
+   {
+      if (strings.size() != 2)
+      {
+         printf("Invalid cmd: delete [breakpoint]\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      // TODO: Break this out of here, this should just handle parsing
+      u64 index = strtoll(strings[1], 0, 10);
+
+      if (index-1 >= breakpoints.size())
+      {
+         printf("Invalid cmd: unknown breakpoint %d\n", index);
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      DeleteBreakpoint(debug_state, index-1);
+      return DEBUG_CMD_DELETE_BREAKPOINT;
+   }
+   else if (strcmp(strings[0], "list") == 0)
+   {
+      if (strings.size() != 1)
+      {
+         printf("Invalid cmd: list\n");
+         return DEBUG_CMD_UNKNOWN;
+      }
+
+      return DEBUG_CMD_LIST_BREAKPOINTS;
+   }
    else if (strcmp(strings[0], "register") == 0)
    {
-
       if (strings.size() < 2)
       {
          printf("Invalid cmd:\n");
@@ -383,36 +473,11 @@ eDebugCommand GetCommand()
 
 void RunDebugger()
 {
-   int bp = -1;
-
    printf("Run debugger on pid %d\n", debug_state.ChildPid);
 
    // Wait for child to stop on its first instruction
    debug_state.WaitOptions = 0;
    waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
-
-   // while (WIFSTOPPED(wait_status))
-   // {
-   //    struct user_regs_struct regs;
-
-   //    icounter++;
-
-   //    ptrace(PTRACE_GETREGS, pid, 0, &regs);
-   //    uint32_t instr = ptrace(PTRACE_PEEKTEXT, pid, regs.rip, 0);
-
-   //    printf("icounter = %u.  RIP = 0x%08x.  instr = 0x%08x\n",
-   //           icounter, regs.rip, instr);
-
-   //    // Make the child execute another instruction
-   //    if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
-   //    {
-   //       perror("ptrace");
-   //       return;
-   //    }
-
-   //    // Wait for child to stop on its next instruction
-   //    wait(&wait_status);
-   // }
 
    while (WIFSTOPPED(debug_state.WaitStatus))
    {
@@ -426,13 +491,15 @@ void RunDebugger()
       }
       else if (cmd == DEBUG_CMD_CONTINUE)
       {
-         if (bp != -1)
-            StepOverBreakpoint(bp);
-         bp = Continue();
+         Continue();
       }
       else if (cmd == DEBUG_CMD_STEP_SINGLE)
       {
          StepSingle();
+      }
+      else if (cmd == DEBUG_CMD_LIST_BREAKPOINTS)
+      {
+         ListBreakpoints();
       }
       else
       {
@@ -453,6 +520,8 @@ int main(int argc, char** argv)
    breakpoints.reserve(64);
 
    debug_state.ChildPid = fork();
+   debug_state.BreakpointHit = -1;
+
    if (debug_state.ChildPid == 0)
    {
       personality(ADDR_NO_RANDOMIZE);
