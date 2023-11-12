@@ -12,354 +12,20 @@
 #include <sys/personality.h>
 #include <errno.h>
 #include <vector>
+#include <chrono>
+#include <thread>
 #include <assert.h>
 
+#include "DebugTypes.h"
+
 #include "PrintData.cpp"
+#include "DebugBackend.cpp"
 
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-typedef int8_t   s8;
-typedef int16_t  s16;
-typedef int32_t  s32;
-typedef int64_t  s64;
-
-typedef float    f32;
-typedef double   f64;
-
-#define PTRACE(Request, Pid, Addr, Data) ({ \
-   long retval = 0; \
-   errno = 0; \
-   retval = ptrace(Request, Pid, Addr, Data); \
-   if (errno) \
-   { \
-      fprintf(stderr, "Error: ptrace error %s (%d) at %s:%d %s\n", strerror(errno), errno, __FILE__, __LINE__, __func__); \
-   } \
-   retval; \
-})
-
-const u8  SW_INTERRUPT_3 = 0xcc;
-const s32 MAX_COMMAND    = 1024;
-
-enum eDebugCommand
+TDebugCommand GetCommand()
 {
-   DEBUG_CMD_UNKNOWN,
-   DEBUG_CMD_CONTINUE,
-   DEBUG_CMD_SET_BREAKPOINT,
-   DEBUG_CMD_DELETE_BREAKPOINT,
-   DEBUG_CMD_ENABLE_BREAKPOINT,
-   DEBUG_CMD_DISABLE_BREAKPOINT,
-   DEBUG_CMD_LIST_BREAKPOINTS,
-   DEBUG_CMD_STEP_OVER,
-   DEBUG_CMD_STEP_INTO,
-   DEBUG_CMD_STEP_SINGLE,
-   DEBUG_CMD_QUIT,
-   DEBUG_CMD_COUNT
-};
-
-// match x86_64 registers in /usr/include/sys/user.h
-enum eRegister
-{
-   REGISTER_R15,
-   REGISTER_R14,
-   REGISTER_R13,
-   REGISTER_R12,
-   REGISTER_RBP,
-   REGISTER_RBX,
-   REGISTER_R11,
-   REGISTER_R10,
-   REGISTER_R9,
-   REGISTER_R8,
-   REGISTER_RAX,
-   REGSITER_RCX,
-   REGISTER_RDX,
-   REGISTER_RSI,
-   REGISTER_RDI,
-   REGISTER_ORIG_RAX,
-   REGISTER_RIP,
-   REGISTER_CS,
-   REGISTER_EFLAGS,
-   REGISTER_RSP,
-   REGISTER_SS,
-   REGISTER_FS_BASE,
-   REGISTER_GS_BASE,
-   REGISTER_DS,
-   REGISTER_ES,
-   REGISTER_FS,
-   REGISTER_GS,
-   REGISTER_COUNT
-};
-
-const char* RegisterStr[] =
-{
-   "r15",
-   "r14",
-   "r13",
-   "r12",
-   "rbp",
-   "rbx",
-   "r11",
-   "r10",
-   "r9",
-   "r8",
-   "rax",
-   "rcx",
-   "rdx",
-   "rsi",
-   "rdi",
-   "orig_rax",
-   "rip",
-   "cs",
-   "eflags",
-   "rsp",
-   "ss",
-   "fs_base",
-   "gs_base",
-   "ds",
-   "es",
-   "fs",
-   "gs",
-   "Unknown Register"
-};
-
-union TRegister
-{
-   user_regs_struct Reg;
-   u64              RegArray[REGISTER_COUNT];
-};
-
-struct TDebugState
-{
-   pid_t ChildPid;
-   s32   BreakpointHit;
-   s32   WaitStatus;
-   s32   WaitOptions;
-};
-
-struct TBreakpoint
-{
-   u64  Address;
-   u8   SavedData;
-   bool Enabled;
-};
-
-TDebugState              debug_state;
-std::vector<TBreakpoint> breakpoints;
-
-void StepOverBreakpoint(int Breakpoint);
-
-u64 GetRegister(eRegister Register)
-{
-   TRegister registers;
-   u64       result = 0;
-   long      status;
-
-   status = PTRACE(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
-
-   if (status != -1)
-   {
-      result = registers.RegArray[Register];
-   }
-
-   return result;
-}
-
-bool SetRegister(eRegister Register, u64 Value)
-{
-   TRegister registers;
-   bool      result = false;
-   long      status;
-
-   status = PTRACE(PTRACE_GETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
-
-   if (status != -1)
-   {
-      registers.RegArray[Register] = Value;
-
-      status = PTRACE(PTRACE_SETREGS, debug_state.ChildPid, nullptr, &registers.Reg);
-
-      result = (status != -1);
-   }
-
-   return result;
-}
-
-u64 GetData(u64 Address)
-{
-   u64 data = PTRACE(PTRACE_PEEKDATA, debug_state.ChildPid, Address, nullptr);
-
-   return data;
-}
-
-void SetData(u64 Address, u64 Value)
-{
-   PTRACE(PTRACE_POKEDATA, debug_state.ChildPid, Address, Value);
-}
-
-void AddBreakpoint(TDebugState State, u64 Address)
-{
-   TBreakpoint bp = {};
-
-   u64 data = GetData(Address);
-
-   if (errno == 0)
-   {
-      bp.Address = Address;
-      bp.Enabled = true;
-      bp.SavedData = data;
-
-      u64 data_w_int = ((data & ~0xff) | SW_INTERRUPT_3);
-      SetData(Address, data_w_int);
-
-      breakpoints.push_back(bp);
-   }
-   else
-   {
-      fprintf(stderr, "Error peek data %s (%d)\n", strerror(errno), errno);
-   }
-}
-
-void DeleteBreakpoint(TDebugState State, u64 Index)
-{
-   assert(Index < breakpoints.size());
-
-   u64 data = (GetData(breakpoints[Index].Address) & ~0xff) | breakpoints[Index].SavedData;
-   SetData(breakpoints[Index].Address, data);
-
-   if (debug_state.BreakpointHit == Index)
-   {
-      debug_state.BreakpointHit = -1;
-   }
-   else if (debug_state.BreakpointHit != -1 && Index < debug_state.BreakpointHit)
-   {
-      debug_state.BreakpointHit -= 1;
-   }
-
-   breakpoints.erase(breakpoints.begin() + Index);
-}
-
-void EnableBreakpoint(TDebugState State, u64 Index)
-{
-   assert(Index < breakpoints.size());
-
-   if (!breakpoints[Index].Enabled)
-   {
-      u64 data_w_int = ((GetData(breakpoints[Index].Address) & ~0xff) | SW_INTERRUPT_3);
-      SetData(breakpoints[Index].Address, data_w_int);
-      breakpoints[Index].Enabled = true;
-   }
-}
-
-void DisableBreakpoint(TDebugState State, u64 Index)
-{
-   assert(Index < breakpoints.size());
-
-   if (breakpoints[Index].Enabled)
-   {
-      u64 data = (GetData(breakpoints[Index].Address) & ~0xff) | breakpoints[Index].SavedData;
-      SetData(breakpoints[Index].Address, data);
-      breakpoints[Index].Enabled = false;
-   }
-}
-
-void ListBreakpoints()
-{
-   printf("Number of breakpoints: %d\n", breakpoints.size());
-   for (size_t i = 0; i < breakpoints.size(); i++)
-   {
-      printf("  Breakpoint % 4d: 0x%x %s\n", i+1, breakpoints[i].Address, (!breakpoints[i].Enabled) ? "(disabled)" : "");
-   }
-
-   // print some debug
-   u64 data[7];
-   u64 addr = 0x401000;
-   for (int i = 0; i < 7; i++)
-   {
-      data[i] = GetData(addr);
-      addr += 8;
-   }
-   printf("%s\n", CPrintData::GetDataAsString((char*)data, sizeof(data)));
-}
-
-int CheckBreakpoints()
-{
-   u64 rip = GetRegister(REGISTER_RIP) - 1;
-
-   for (size_t i = 0; i < breakpoints.size(); i++)
-   {
-      if (breakpoints[i].Address == rip)
-      {
-         debug_state.BreakpointHit = i;
-         // back up one instruction
-         SetRegister(REGISTER_RIP, rip);
-         return i;
-      }
-   }
-
-   return -1;
-}
-
-int Continue()
-{
-   if (debug_state.BreakpointHit != -1)
-      StepOverBreakpoint(debug_state.BreakpointHit);
-
-   PTRACE(PTRACE_CONT, debug_state.ChildPid, nullptr, nullptr);
-   waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
-
-   int bp = CheckBreakpoints();
-   if (bp != -1)
-   {
-      printf("Breakpoint %d hit at 0x%x\n", bp + 1, breakpoints[bp].Address);
-   }
-
-   return bp;
-}
-
-void StepSingle()
-{
-   if (debug_state.BreakpointHit != -1)
-   {
-      StepOverBreakpoint(debug_state.BreakpointHit);
-   }
-
-   PTRACE(PTRACE_SINGLESTEP, debug_state.ChildPid, nullptr, nullptr);
-   waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
-}
-
-void StepOverBreakpoint(int Breakpoint)
-{
-   assert(Breakpoint >= 0 && Breakpoint < breakpoints.size());
-
-   u64 data = (GetData(breakpoints[Breakpoint].Address) & ~0xff) | breakpoints[Breakpoint].SavedData;
-   SetData(breakpoints[Breakpoint].Address, data);
-
-   debug_state.BreakpointHit = -1;
-   StepSingle();
-
-   // re-enable breakpoint
-   u64 data_w_int = ((GetData(breakpoints[Breakpoint].Address) & ~0xff) | SW_INTERRUPT_3);
-   SetData(breakpoints[Breakpoint].Address, data_w_int);
-}
-
-void RunTarget(const char* program)
-{
-   printf("Run target %s\n", program);
-
-   if (PTRACE(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
-   {
-      return;
-   }
-
-   execl(program, program, nullptr);
-}
-
-eDebugCommand GetCommand()
-{
-   char input[MAX_COMMAND] = {};
+   char               input[MAX_COMMAND] = {};
    std::vector<char*> strings;
+   TDebugCommand      result = {};
 
    printf("\ndbg> ");
    fgets(input, MAX_COMMAND-1, stdin);
@@ -391,98 +57,89 @@ eDebugCommand GetCommand()
 
    if (strcmp(strings[0], "c") == 0 || strcmp(strings[0], "cont") == 0 || strcmp(strings[0], "continue") == 0)
    {
-      return DEBUG_CMD_CONTINUE;
+      result.Command = DEBUG_CMD_CONTINUE;
+      return result;
    }
    else if (strcmp(strings[0], "q") == 0 || strcmp(strings[0], "quit") == 0)
    {
-      return DEBUG_CMD_QUIT;
+      result.Command = DEBUG_CMD_QUIT;
+      return result;
    }
    else if (strcmp(strings[0], "s") == 0 || strcmp(strings[0], "step") == 0)
    {
-      return DEBUG_CMD_STEP_SINGLE;
+      result.Command = DEBUG_CMD_STEP_SINGLE;
+      return result;
    }
    else if (strcmp(strings[0], "b") == 0 || strcmp(strings[0], "break") == 0)
    {
       if (strings.size() != 2)
       {
          printf("Invalid cmd: break [address]\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      // TODO: Break this out of here, this should just handle parsing
-      u64 addr = strtoll(strings[1], 0, 16);
-      AddBreakpoint(debug_state, addr);
-      return DEBUG_CMD_SET_BREAKPOINT;
+      result.Command = DEBUG_CMD_SET_BREAKPOINT;
+      result.Data.BpAddr.Address = strtoll(strings[1], 0, 16);
+      return result;
    }
    else if (strcmp(strings[0], "delete") == 0)
    {
       if (strings.size() != 2)
       {
          printf("Invalid cmd: delete [breakpoint]\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      // TODO: Break this out of here, this should just handle parsing
-      u64 index = strtoll(strings[1], 0, 10);
+      // TODO: Add error handling from backend
+      // if (index-1 >= breakpoints.size())
+      // {
+      //    printf("Invalid cmd: unknown breakpoint %d\n", index);
+      //    return DEBUG_CMD_UNKNOWN;
+      // }
 
-      if (index-1 >= breakpoints.size())
-      {
-         printf("Invalid cmd: unknown breakpoint %d\n", index);
-         return DEBUG_CMD_UNKNOWN;
-      }
-
-      DeleteBreakpoint(debug_state, index-1);
-      return DEBUG_CMD_DELETE_BREAKPOINT;
+      result.Command = DEBUG_CMD_DELETE_BREAKPOINT;
+      result.Data.BpIdx.Index = strtoll(strings[1], 0, 10) - 1;
+      return result;
    }
    else if (strcmp(strings[0], "enable") == 0)
    {
       if (strings.size() != 2)
       {
          printf("Invalid cmd: enable [breakpoint]\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      // TODO: Break this out of here, this should just handle parsing
-      u64 index = strtoll(strings[1], 0, 10);
-
-      if (index-1 >= breakpoints.size())
-      {
-         printf("Invalid cmd: unknown breakpoint %d\n", index);
-         return DEBUG_CMD_UNKNOWN;
-      }
-
-      EnableBreakpoint(debug_state, index-1);
-      return DEBUG_CMD_ENABLE_BREAKPOINT;
+      result.Command = DEBUG_CMD_ENABLE_BREAKPOINT;
+      result.Data.BpIdx.Index = strtoll(strings[1], 0, 10) - 1;
+      return result;
    }
    else if (strcmp(strings[0], "disable") == 0)
    {
       if (strings.size() != 2)
       {
          printf("Invalid cmd: disable [breakpoint]\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      // TODO: Break this out of here, this should just handle parsing
-      u64 index = strtoll(strings[1], 0, 10);
-
-      if (index-1 >= breakpoints.size())
-      {
-         printf("Invalid cmd: unknown breakpoint %d\n", index);
-         return DEBUG_CMD_UNKNOWN;
-      }
-
-      DisableBreakpoint(debug_state, index-1);
-      return DEBUG_CMD_DISABLE_BREAKPOINT;
+      result.Command = DEBUG_CMD_DISABLE_BREAKPOINT;
+      result.Data.BpIdx.Index = strtoll(strings[1], 0, 10) - 1;
+      return result;
    }
    else if (strcmp(strings[0], "list") == 0)
    {
       if (strings.size() != 1)
       {
          printf("Invalid cmd: list\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      return DEBUG_CMD_LIST_BREAKPOINTS;
+      result.Command = DEBUG_CMD_LIST_BREAKPOINTS;
+      return result;
    }
    else if (strcmp(strings[0], "register") == 0)
    {
@@ -491,47 +148,19 @@ eDebugCommand GetCommand()
          printf("Invalid cmd:\n");
          printf("  register read [register_name]\n");
          printf("  register write [register_name] [value]\n");
-         return DEBUG_CMD_UNKNOWN;
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
       }
 
-      // TODO: Break this out of here, this should just handle parsing
       if (strcmp(strings[1], "read") == 0)
       {
-         u64         value = 0;
-         const char* register_name = nullptr;
+         eRegister register_name = REGISTER_COUNT;
 
          if (strings.size() != 3)
          {
             printf("Invalid cmd: register read [register_name]\n");
-            return DEBUG_CMD_UNKNOWN;
-         }
-
-         for (int i = 0; i < REGISTER_COUNT; i++)
-         {
-            if (strcmp(strings[2], RegisterStr[i]) == 0)
-            {
-               value = GetRegister((eRegister)i);
-               register_name = RegisterStr[i];
-            }
-         }
-
-         if (!register_name)
-         {
-            printf("Unknown register\n");
-            return DEBUG_CMD_UNKNOWN;
-         }
-
-         printf("Register %s contents: 0x%x\n", register_name, value);
-      }
-      else if (strcmp(strings[1], "write") == 0)
-      {
-         u64       value = strtoll(strings[3], 0, 16);
-         eRegister register_name = REGISTER_COUNT;
-
-         if (strings.size() != 4)
-         {
-            printf("Invalid cmd: register write [register_name] [value]\n");
-            return DEBUG_CMD_UNKNOWN;
+            result.Command = DEBUG_CMD_UNKNOWN;
+            return result;
          }
 
          for (int i = 0; i < REGISTER_COUNT; i++)
@@ -545,85 +174,88 @@ eDebugCommand GetCommand()
          if (register_name == REGISTER_COUNT)
          {
             printf("Unknown register\n");
-            return DEBUG_CMD_UNKNOWN;
+            result.Command = DEBUG_CMD_UNKNOWN;
+            return result;
          }
 
-         SetRegister(register_name, value);
-         printf("Wrote Register %s contents: 0x%x\n", RegisterStr[register_name], value);
+         result.Command = DEBUG_CMD_REGISTER_READ;
+         result.Data.Reg.Index = register_name;
+         return result;
+      }
+      else if (strcmp(strings[1], "write") == 0)
+      {
+         u64       value = strtoll(strings[3], 0, 16);
+         eRegister register_name = REGISTER_COUNT;
+
+         if (strings.size() != 4)
+         {
+            printf("Invalid cmd: register write [register_name] [value]\n");
+            result.Command = DEBUG_CMD_UNKNOWN;
+            return result;
+         }
+
+         for (int i = 0; i < REGISTER_COUNT; i++)
+         {
+            if (strcmp(strings[2], RegisterStr[i]) == 0)
+            {
+               register_name = (eRegister)i;
+            }
+         }
+
+         if (register_name == REGISTER_COUNT)
+         {
+            printf("Unknown register\n");
+            result.Command = DEBUG_CMD_UNKNOWN;
+            return result;
+         }
+
+         result.Command = DEBUG_CMD_REGISTER_WRITE;
+         result.Data.Reg.Index = register_name;
+         result.Data.Reg.Value = value;
+         return result;
       }
 
-      return DEBUG_CMD_UNKNOWN;
+      result.Command = DEBUG_CMD_UNKNOWN;
+      return result;
    }
 
    printf("Unknown command\n");
-   return DEBUG_CMD_UNKNOWN;
+   result.Command = DEBUG_CMD_UNKNOWN;
+   return result;
 };
 
-void RunDebugger()
+void RunConsole(CDebugBackend& Debugger)
 {
-   printf("Run debugger on pid %d\n", debug_state.ChildPid);
-
-   // Wait for child to stop on its first instruction
-   debug_state.WaitOptions = 0;
-   waitpid(debug_state.ChildPid, &debug_state.WaitStatus, debug_state.WaitOptions);
-
-   while (WIFSTOPPED(debug_state.WaitStatus))
+   while (Debugger.IsRunning())
    {
-      eDebugCommand cmd = GetCommand();
+      TDebugCommand cmd = GetCommand();
 
-      if (cmd == DEBUG_CMD_QUIT)
+      if (cmd.Command != DEBUG_CMD_UNKNOWN)
       {
-         // we're done, stop the child process
-         kill(debug_state.ChildPid, SIGTERM);
-         break;
-      }
-      else if (cmd == DEBUG_CMD_CONTINUE)
-      {
-         Continue();
-      }
-      else if (cmd == DEBUG_CMD_STEP_SINGLE)
-      {
-         StepSingle();
-      }
-      else if (cmd == DEBUG_CMD_LIST_BREAKPOINTS)
-      {
-         ListBreakpoints();
-      }
-      else
-      {
-         continue;
+         Debugger.SetCommand(cmd);
+
+         // wait for command to be processed by backend
+         while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
+         {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+         }
       }
    }
 }
 
 int main(int argc, char** argv)
 {
+   CDebugBackend debugger;
+
    if (argc < 2)
    {
       fprintf(stderr, "Expected a program name as argument\n");
       return -1;
    }
 
-   // reserve some initial max amount of breakpoints
-   breakpoints.reserve(64);
+   debugger.Run(argv[1]);
 
-   debug_state.ChildPid = fork();
-   debug_state.BreakpointHit = -1;
-
-   if (debug_state.ChildPid == 0)
-   {
-      personality(ADDR_NO_RANDOMIZE);
-      RunTarget(argv[1]);
-   }
-   else if (debug_state.ChildPid > 0)
-   {
-      RunDebugger();
-   }
-   else
-   {
-      perror("fork");
-      return -1;
-   }
+   RunConsole(debugger);
 
    return 0;
 }
