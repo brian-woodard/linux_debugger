@@ -50,6 +50,8 @@ const char* RegisterStr[] =
 
 CDebugBackend::CDebugBackend()
    : mTarget(),
+     mThread(),
+     mMutex(),
      mBreakpoints(),
      mChildPid(0),
      mBreakpointHit(-1),
@@ -257,6 +259,7 @@ void CDebugBackend::StepOverBreakpoint()
 
 void CDebugBackend::SetCommand(TDebugCommand Command)
 {
+   mMutex.lock();
    mCommand = Command;
 
    if (mCommand.Command == DEBUG_CMD_QUIT)
@@ -266,6 +269,7 @@ void CDebugBackend::SetCommand(TDebugCommand Command)
          mThread.join();
       mCommand.Command = DEBUG_CMD_PROCESSED;
    }
+   mMutex.unlock();
 }
 
 void CDebugBackend::RunCommand()
@@ -308,7 +312,9 @@ void CDebugBackend::RunCommand()
          break;
    }
 
+   mMutex.lock();
    mCommand.Command = DEBUG_CMD_PROCESSED;
+   mMutex.unlock();
 }
 
 void CDebugBackend::RunTarget()
