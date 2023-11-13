@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <mutex>
 #include "DebugTypes.h"
 
 class CDebugBackend
@@ -44,6 +45,7 @@ private:
 
    std::string              mTarget;
    std::thread              mThread;
+   std::mutex               mMutex;
    std::vector<TBreakpoint> mBreakpoints;
    pid_t                    mChildPid;
    s32                      mBreakpointHit;
