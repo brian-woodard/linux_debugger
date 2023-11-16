@@ -35,13 +35,16 @@ private:
    void ListBreakpoints();
    int CheckBreakpoints();
 
-   int Continue();
+   void Continue();
    void StepSingle();
    void StepOverBreakpoint();
 
    void RunCommand();
    void RunTarget();
    void RunDebugger();
+
+   void GetSignalInfo();
+   void Wait();
 
    std::string              mTarget;
    std::thread              mThread;
