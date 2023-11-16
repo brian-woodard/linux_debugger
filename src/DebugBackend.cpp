@@ -48,6 +48,12 @@ const char* RegisterStr[] =
    "Unknown Register"
 };
 
+void SigHandler(int Signal)
+{
+   assert(Signal >= 0 && Signal < NSIG);
+   printf("Got signal %s (%d) on pid %d\n", strsignal(Signal), Signal, getpid());
+}
+
 CDebugBackend::CDebugBackend()
    : mTarget(),
      mThread(),
@@ -208,21 +214,14 @@ int CDebugBackend::CheckBreakpoints()
    return -1;
 }
 
-int CDebugBackend::Continue()
+void CDebugBackend::Continue()
 {
    if (mBreakpointHit != -1)
       StepOverBreakpoint();
 
    PTRACE(PTRACE_CONT, mChildPid, nullptr, nullptr);
-   waitpid(mChildPid, &mWaitStatus, mWaitOptions);
-
-   int bp = CheckBreakpoints();
-   if (bp != -1)
-   {
-      printf("Breakpoint %d hit at 0x%x\n", bp + 1, mBreakpoints[bp].Address);
-   }
-
-   return bp;
+   
+   Wait();
 }
 
 void CDebugBackend::StepSingle()
@@ -233,18 +232,15 @@ void CDebugBackend::StepSingle()
    }
 
    PTRACE(PTRACE_SINGLESTEP, mChildPid, nullptr, nullptr);
-   waitpid(mChildPid, &mWaitStatus, mWaitOptions);
-
-   int bp = CheckBreakpoints();
-   if (bp != -1)
-   {
-      printf("Breakpoint %d hit at 0x%x\n", bp + 1, mBreakpoints[bp].Address);
-   }
+   
+   Wait();
 }
 
 void CDebugBackend::StepOverBreakpoint()
 {
    assert(mBreakpointHit >= 0 && mBreakpointHit < mBreakpoints.size());
+
+   int bp = mBreakpointHit;
 
    u64 data = (GetData(mBreakpoints[mBreakpointHit].Address) & ~0xff) | mBreakpoints[mBreakpointHit].SavedData;
    SetData(mBreakpoints[mBreakpointHit].Address, data);
@@ -253,8 +249,8 @@ void CDebugBackend::StepOverBreakpoint()
    StepSingle();
 
    // re-enable breakpoint
-   u64 data_w_int = ((GetData(mBreakpoints[mBreakpointHit].Address) & ~0xff) | SW_INTERRUPT_3);
-   SetData(mBreakpoints[mBreakpointHit].Address, data_w_int);
+   u64 data_w_int = ((GetData(mBreakpoints[bp].Address) & ~0xff) | SW_INTERRUPT_3);
+   SetData(mBreakpoints[bp].Address, data_w_int);
 }
 
 void CDebugBackend::SetCommand(TDebugCommand Command)
@@ -317,6 +313,35 @@ void CDebugBackend::RunCommand()
    mMutex.unlock();
 }
 
+void CDebugBackend::GetSignalInfo()
+{
+   siginfo_t info = {};
+   PTRACE(PTRACE_GETSIGINFO, mChildPid, nullptr, &info);
+
+   assert(info.si_signo >= 0 && info.si_signo < NSIG);
+
+   printf(">>> got signal %s (%d) from %d code %d\n", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
+}
+
+void CDebugBackend::Wait()
+{
+   // wait for debugee to stop
+   mWaitOptions = 0;
+   waitpid(mChildPid, &mWaitStatus, mWaitOptions);
+
+   printf(">>> wait status 0x%x WIFEXITED %d\n", mWaitStatus, WIFEXITED(mWaitStatus));
+
+   // get some info about the signal that caused the stop
+   GetSignalInfo();
+
+   // check breakpoints
+   int bp = CheckBreakpoints();
+   if (bp != -1)
+   {
+      printf("Breakpoint %d hit at 0x%x\n", bp + 1, mBreakpoints[bp].Address);
+   }
+}
+
 void CDebugBackend::RunTarget()
 {
    if (PTRACE(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
@@ -324,11 +349,25 @@ void CDebugBackend::RunTarget()
       return;
    }
 
+   // signal(SIGTERM, SigHandler);
+   // signal(SIGTRAP, SigHandler);
+   // signal(SIGINT, SigHandler);
+   // signal(SIGSEGV, SigHandler);
+
+   printf(">>> start target pid %d\n", getpid());
+
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
+
+   printf(">>> target finished\n");
 }
 
 void CDebugBackend::RunDebugger()
 {
+   signal(SIGTERM, SigHandler);
+   signal(SIGTRAP, SigHandler);
+   signal(SIGINT, SigHandler);
+   signal(SIGSEGV, SigHandler);
+
    mChildPid = fork();
 
    if (mChildPid == 0)
@@ -343,8 +382,9 @@ void CDebugBackend::RunDebugger()
    }
 
    // Wait for child to stop on its first instruction
-   mWaitOptions = 0;
-   waitpid(mChildPid, &mWaitStatus, mWaitOptions);
+   Wait();
+
+   PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
 
    while (mRunning)
    {

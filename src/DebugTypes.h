@@ -18,9 +18,10 @@ typedef int64_t  s64;
 typedef float    f32;
 typedef double   f64;
 
-
 const u8  SW_INTERRUPT_3 = 0xcc;
 const s32 MAX_COMMAND    = 1024;
+
+#define ArrayCount(array) sizeof(array)/sizeof(array[0])
 
 enum eDebugCommand
 {
