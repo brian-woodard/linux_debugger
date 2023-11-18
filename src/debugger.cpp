@@ -60,6 +60,11 @@ TDebugCommand GetCommand()
       result.Command = DEBUG_CMD_CONTINUE;
       return result;
    }
+   else if (strcmp(strings[0], "r") == 0 || strcmp(strings[0], "run") == 0)
+   {
+      result.Command = DEBUG_CMD_RUN;
+      return result;
+   }
    else if (strcmp(strings[0], "q") == 0 || strcmp(strings[0], "quit") == 0)
    {
       result.Command = DEBUG_CMD_QUIT;
@@ -226,9 +231,17 @@ TDebugCommand GetCommand()
 
 void RunConsole(CDebugBackend& Debugger)
 {
+   TDebugCommand cmd;
+
+   // wait for debug backend to startup by waiting for a cmd processed
+   while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
+   {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+   }
+
    while (Debugger.IsRunning())
    {
-      TDebugCommand cmd = GetCommand();
+      cmd = GetCommand();
 
       if (cmd.Command != DEBUG_CMD_UNKNOWN)
       {
