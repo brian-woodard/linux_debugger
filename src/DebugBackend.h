@@ -39,9 +39,10 @@ private:
    void StepSingle();
    void StepOverBreakpoint();
 
-   void RunCommand();
+   void HandleCommand();
    void RunTarget();
    void RunDebugger();
+   void StartTarget();
 
    void GetSignalInfo();
    void Wait();
@@ -56,4 +57,5 @@ private:
    s32                      mWaitOptions;
    TDebugCommand            mCommand;
    bool                     mRunning;
+   bool                     mTargetRunning;
 };

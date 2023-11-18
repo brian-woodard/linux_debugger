@@ -1,8 +1,14 @@
 
 #include <stdio.h>
 #include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/personality.h>
 #include <errno.h>
 #include <assert.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
 #include "DebugBackend.h"
 
 #define PTRACE(Request, Pid, Addr, Data) ({ \
@@ -64,7 +70,8 @@ CDebugBackend::CDebugBackend()
      mWaitStatus(0),
      mWaitOptions(0),
      mCommand{},
-     mRunning(false)
+     mRunning(false),
+     mTargetRunning(false)
 {
    mBreakpoints.reserve(64);
 }
@@ -268,15 +275,51 @@ void CDebugBackend::SetCommand(TDebugCommand Command)
    mMutex.unlock();
 }
 
-void CDebugBackend::RunCommand()
+void CDebugBackend::HandleCommand()
 {
    switch (mCommand.Command)
    {
       case DEBUG_CMD_CONTINUE:
-         Continue();
+         if (!mTargetRunning)
+            printf("Target is not running\n");
+         else
+            Continue();
+         break;
+      case DEBUG_CMD_RUN:
+         if (mTargetRunning)
+            printf("Target is already running, pid %d\n", mChildPid);
+         else
+         {
+            if (WIFEXITED(mWaitStatus))
+            {
+               StartTarget();
+
+               // set all breakpoints on new instance
+               size_t num_breakpoints = mBreakpoints.size();
+               for (size_t i = 0; i < num_breakpoints; i++)
+               {
+                  AddBreakpoint(mBreakpoints[i].Address);
+                  if (!mBreakpoints[i].Enabled)
+                  {
+                     size_t new_bp_idx = mBreakpoints.size();
+                     DisableBreakpoint(new_bp_idx);
+                  }
+               }
+
+               // delete old breakpoints in reverse order
+               for (size_t i = num_breakpoints; i > 0; i--)
+               {
+                  mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
+               }
+            }
+            mTargetRunning = true;
+         }
          break;
       case DEBUG_CMD_STEP_SINGLE:
-         StepSingle();
+         if (!mTargetRunning)
+            printf("Target is not running\n");
+         else
+            StepSingle();
          break;
       case DEBUG_CMD_LIST_BREAKPOINTS:
          ListBreakpoints();
@@ -320,7 +363,8 @@ void CDebugBackend::GetSignalInfo()
 
    assert(info.si_signo >= 0 && info.si_signo < NSIG);
 
-   printf(">>> got signal %s (%d) from %d code %d\n", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
+   // not really sure what do with this info?
+   //printf("got signal %s (%d) from %d code %d\n", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
 }
 
 void CDebugBackend::Wait()
@@ -329,7 +373,11 @@ void CDebugBackend::Wait()
    mWaitOptions = 0;
    waitpid(mChildPid, &mWaitStatus, mWaitOptions);
 
-   printf(">>> wait status 0x%x WIFEXITED %d\n", mWaitStatus, WIFEXITED(mWaitStatus));
+   if (WIFEXITED(mWaitStatus))
+   {
+      mTargetRunning = false;
+      return;
+   }
 
    // get some info about the signal that caused the stop
    GetSignalInfo();
@@ -349,16 +397,34 @@ void CDebugBackend::RunTarget()
       return;
    }
 
-   // signal(SIGTERM, SigHandler);
-   // signal(SIGTRAP, SigHandler);
-   // signal(SIGINT, SigHandler);
-   // signal(SIGSEGV, SigHandler);
-
-   printf(">>> start target pid %d\n", getpid());
+   printf("Debugging started on %s, pid %d\n", mTarget.c_str(), getpid());
 
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
+}
 
-   printf(">>> target finished\n");
+void CDebugBackend::StartTarget()
+{
+   if (!mTargetRunning)
+   {
+      mChildPid = fork();
+
+      if (mChildPid == 0)
+      {
+         personality(ADDR_NO_RANDOMIZE);
+         RunTarget();
+      }
+      else if (mChildPid < 0)
+      {
+         perror("fork");
+         mRunning = false;
+         return;
+      }
+
+      // Wait for child to stop on its first instruction
+      Wait();
+
+      //PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
+   }
 }
 
 void CDebugBackend::RunDebugger()
@@ -368,27 +434,11 @@ void CDebugBackend::RunDebugger()
    signal(SIGINT, SigHandler);
    signal(SIGSEGV, SigHandler);
 
-   mChildPid = fork();
-
-   if (mChildPid == 0)
-   {
-      personality(ADDR_NO_RANDOMIZE);
-      RunTarget();
-   }
-   else if (mChildPid < 0)
-   {
-      perror("fork");
-      return;
-   }
-
-   // Wait for child to stop on its first instruction
-   Wait();
-
-   PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
+   StartTarget();
 
    while (mRunning)
    {
-      RunCommand();
+      HandleCommand();
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
    }
