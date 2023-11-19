@@ -17,7 +17,9 @@
    retval = ptrace(Request, Pid, Addr, Data); \
    if (errno) \
    { \
-      fprintf(stderr, "Error: ptrace error %s (%d) at %s:%d %s\n", strerror(errno), errno, __FILE__, __LINE__, __func__); \
+      char msg[256]; \
+      sprintf(msg, "ptrace error %s (%d) at %s:%d %s", strerror(errno), errno, __FILE__, __LINE__, __func__); \
+      PushString(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg)); \
    } \
    retval; \
 })
@@ -65,6 +67,8 @@ CDebugBackend::CDebugBackend()
      mThread(),
      mMutex(),
      mBreakpoints(),
+     mOutputBuffer(nullptr),
+     mBufferIndex(0),
      mChildPid(0),
      mBreakpointHit(-1),
      mWaitStatus(0),
@@ -145,10 +149,6 @@ void CDebugBackend::AddBreakpoint(u64 Address)
 
       mBreakpoints.push_back(bp);
    }
-   else
-   {
-      fprintf(stderr, "Error peek data %s (%d)\n", strerror(errno), errno);
-   }
 }
 
 void CDebugBackend::DeleteBreakpoint(u64 Index)
@@ -196,10 +196,15 @@ void CDebugBackend::DisableBreakpoint(u64 Index)
 
 void CDebugBackend::ListBreakpoints()
 {
-   printf("Number of breakpoints: %d\n", mBreakpoints.size());
+   char msg[256];
+
+   sprintf(msg, "Number of breakpoints: %d", mBreakpoints.size());
+   PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+
    for (size_t i = 0; i < mBreakpoints.size(); i++)
    {
-      printf("  Breakpoint % 4d: 0x%x %s\n", i+1, mBreakpoints[i].Address, (!mBreakpoints[i].Enabled) ? "(disabled)" : "");
+      sprintf(msg, "  Breakpoint % 4d: 0x%x %s", i+1, mBreakpoints[i].Address, (!mBreakpoints[i].Enabled) ? "(disabled)" : "");
+      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
    }
 }
 
@@ -281,43 +286,38 @@ void CDebugBackend::HandleCommand()
    {
       case DEBUG_CMD_CONTINUE:
          if (!mTargetRunning)
-            printf("Target is not running\n");
+         {
+            char msg[256];
+            sprintf(msg, "Target is not running");
+            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
          else
             Continue();
          break;
       case DEBUG_CMD_RUN:
          if (mTargetRunning)
-            printf("Target is already running, pid %d\n", mChildPid);
+         {
+            char msg[256];
+            sprintf(msg, "Target is already running, pid %d", mChildPid);
+            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
          else
          {
             if (WIFEXITED(mWaitStatus))
             {
-               StartTarget();
-
-               // set all breakpoints on new instance
-               size_t num_breakpoints = mBreakpoints.size();
-               for (size_t i = 0; i < num_breakpoints; i++)
-               {
-                  AddBreakpoint(mBreakpoints[i].Address);
-                  if (!mBreakpoints[i].Enabled)
-                  {
-                     size_t new_bp_idx = mBreakpoints.size();
-                     DisableBreakpoint(new_bp_idx);
-                  }
-               }
-
-               // delete old breakpoints in reverse order
-               for (size_t i = num_breakpoints; i > 0; i--)
-               {
-                  mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
-               }
+               RestartTarget();
             }
             mTargetRunning = true;
+            Continue();
          }
          break;
       case DEBUG_CMD_STEP_SINGLE:
          if (!mTargetRunning)
-            printf("Target is not running\n");
+         {
+            char msg[256];
+            sprintf(msg, "Target is not running");
+            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
          else
             StepSingle();
          break;
@@ -337,16 +337,25 @@ void CDebugBackend::HandleCommand()
          DisableBreakpoint(mCommand.Data.BpIdx.Index);
          break;
       case DEBUG_CMD_REGISTER_READ:
-         printf("Register %s contents: 0x%x\n", RegisterStr[mCommand.Data.Reg.Index], GetRegister((eRegister)mCommand.Data.Reg.Index));
+      {
+         char msg[256];
+         sprintf(msg, "Register %s contents: 0x%x", RegisterStr[mCommand.Data.Reg.Index], GetRegister((eRegister)mCommand.Data.Reg.Index));
+         PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          break;
+      }
       case DEBUG_CMD_REGISTER_WRITE:
+      {
+         char msg[256];
+
          // if writing to instruction pointer, clear breakpoint hit index
          if (mCommand.Data.Reg.Index == REGISTER_RIP)
             mBreakpointHit = -1;
 
          SetRegister((eRegister)mCommand.Data.Reg.Index, mCommand.Data.Reg.Value);
-         printf("Wrote Register %s contents: 0x%x\n", RegisterStr[mCommand.Data.Reg.Index], mCommand.Data.Reg.Value);
+         sprintf(msg, "Wrote Register %s contents: 0x%x", RegisterStr[mCommand.Data.Reg.Index], mCommand.Data.Reg.Value);
+         PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          break;
+      }
       default:
          break;
    }
@@ -358,17 +367,21 @@ void CDebugBackend::HandleCommand()
 
 void CDebugBackend::GetSignalInfo()
 {
+   char      msg[256];
    siginfo_t info = {};
    PTRACE(PTRACE_GETSIGINFO, mChildPid, nullptr, &info);
 
    assert(info.si_signo >= 0 && info.si_signo < NSIG);
 
    // not really sure what do with this info?
-   //printf("got signal %s (%d) from %d code %d\n", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
+   //sprintf(msg, "got signal %s (%d) from %d code %d", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
+   //PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 }
 
 void CDebugBackend::Wait()
 {
+   char msg[256];
+
    // wait for debugee to stop
    mWaitOptions = 0;
    waitpid(mChildPid, &mWaitStatus, mWaitOptions);
@@ -376,6 +389,12 @@ void CDebugBackend::Wait()
    if (WIFEXITED(mWaitStatus))
    {
       mTargetRunning = false;
+
+      sprintf(msg, "Target execution exited cleanly");
+      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+
+      // start a new instance
+      RestartTarget();
       return;
    }
 
@@ -386,18 +405,22 @@ void CDebugBackend::Wait()
    int bp = CheckBreakpoints();
    if (bp != -1)
    {
-      printf("Breakpoint %d hit at 0x%x\n", bp + 1, mBreakpoints[bp].Address);
+      sprintf(msg, "Breakpoint %d hit at 0x%x", bp + 1, mBreakpoints[bp].Address);
+      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
    }
 }
 
 void CDebugBackend::RunTarget()
 {
+   char msg[256];
+
    if (PTRACE(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
    {
       return;
    }
 
-   printf("Debugging started on %s, pid %d\n", mTarget.c_str(), getpid());
+   sprintf(msg, "Debugging started on %s, pid %d", mTarget.c_str(), getpid());
+   PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
 }
@@ -415,7 +438,9 @@ void CDebugBackend::StartTarget()
       }
       else if (mChildPid < 0)
       {
-         perror("fork");
+         char msg[256];
+         sprintf(msg, "Error forking child process %s (%d)", strerror(errno), errno);
+         PushString(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
          mRunning = false;
          return;
       }
@@ -427,12 +452,77 @@ void CDebugBackend::StartTarget()
    }
 }
 
+void CDebugBackend::RestartTarget()
+{
+   StartTarget();
+
+   // set all breakpoints on new instance
+   size_t num_breakpoints = mBreakpoints.size();
+   for (size_t i = 0; i < num_breakpoints; i++)
+   {
+      AddBreakpoint(mBreakpoints[i].Address);
+      if (!mBreakpoints[i].Enabled)
+      {
+         size_t new_bp_idx = mBreakpoints.size();
+         DisableBreakpoint(new_bp_idx);
+      }
+   }
+
+   // delete old breakpoints in reverse order
+   for (size_t i = num_breakpoints; i > 0; i--)
+   {
+      mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
+   }
+}
+
+void CDebugBackend::PushString(eDataType DataType, u8* String, u32 Size)
+{
+   mMutex.lock();
+   TBufferHeader* header = (TBufferHeader*)&mOutputBuffer[mBufferIndex];
+
+   header->DataType = DataType;
+   header->Size = Size;
+
+   mBufferIndex += sizeof(TBufferHeader);
+
+   memcpy(&mOutputBuffer[mBufferIndex], String, Size);
+
+   mBufferIndex += Size;
+   mMutex.unlock();
+}
+
+u8* CDebugBackend::PopBuffer()
+{
+   u8* result = nullptr;
+
+   mMutex.lock();
+   if (mReadIndex < mBufferIndex)
+   {
+      TBufferHeader* header = (TBufferHeader*)&mOutputBuffer[mReadIndex];
+
+      result = &mOutputBuffer[mReadIndex];
+
+      mReadIndex += sizeof(TBufferHeader);
+      mReadIndex += header->Size;
+   }
+   else
+   {
+      mBufferIndex = 0;
+      mReadIndex = 0;
+   }
+   mMutex.unlock();
+
+   return result;
+}
+
 void CDebugBackend::RunDebugger()
 {
    signal(SIGTERM, SigHandler);
    signal(SIGTRAP, SigHandler);
    signal(SIGINT, SigHandler);
    signal(SIGSEGV, SigHandler);
+
+   mOutputBuffer = new u8[OUTPUT_BUFFER];
 
    StartTarget();
 

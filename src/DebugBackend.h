@@ -26,6 +26,8 @@ public:
    bool IsRunning() const { return mRunning; }
    bool Run(const char* Filename);
 
+   u8* PopBuffer();
+
 private:
 
    void AddBreakpoint(u64 Address);
@@ -43,14 +45,20 @@ private:
    void RunTarget();
    void RunDebugger();
    void StartTarget();
+   void RestartTarget();
 
    void GetSignalInfo();
    void Wait();
+
+   void PushString(eDataType DataType, u8* String, u32 Size);
 
    std::string              mTarget;
    std::thread              mThread;
    std::mutex               mMutex;
    std::vector<TBreakpoint> mBreakpoints;
+   u8*                      mOutputBuffer;
+   u32                      mBufferIndex;
+   u32                      mReadIndex;
    pid_t                    mChildPid;
    s32                      mBreakpointHit;
    s32                      mWaitStatus;

@@ -20,6 +20,7 @@ typedef double   f64;
 
 const u8  SW_INTERRUPT_3 = 0xcc;
 const s32 MAX_COMMAND    = 1024;
+const u32 OUTPUT_BUFFER  = 1024 * 1024;
 
 #define ArrayCount(array) sizeof(array)/sizeof(array[0])
 
@@ -100,6 +101,7 @@ enum eRegister
 
 extern const char* RegisterStr[];
 
+
 union TRegister
 {
    user_regs_struct Reg;
@@ -119,4 +121,21 @@ struct TBreakpoint
    u64  Address;
    u8   SavedData;
    bool Enabled;
+};
+
+enum eDataType
+{
+   DATA_TYPE_STREAM_ERROR,
+   DATA_TYPE_STREAM_WARNING,
+   DATA_TYPE_STREAM_INFO,
+   DATA_TYPE_STREAM_DEBUG,
+   DATA_TYPE_REGISTERS,
+   DATA_TYPE_DATA,
+   DATA_TYPE_COUNT
+};
+
+struct TBufferHeader
+{
+   eDataType DataType;
+   u32       Size;
 };

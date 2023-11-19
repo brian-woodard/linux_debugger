@@ -252,6 +252,36 @@ void RunConsole(CDebugBackend& Debugger)
          {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
          }
+
+         // process any data output from backend
+         u8* data;
+         while ((data = Debugger.PopBuffer()))
+         {
+            TBufferHeader* header = (TBufferHeader*)data;
+            switch (header->DataType)
+            {
+               case DATA_TYPE_STREAM_ERROR:
+               {
+                  char* str = (char*)&data[sizeof(TBufferHeader)];
+                  printf("ERROR: %.*s\n", header->Size, str);
+                  break;
+               }
+               case DATA_TYPE_STREAM_WARNING:
+               {
+                  char* str = (char*)&data[sizeof(TBufferHeader)];
+                  printf("WARNING: %.*s\n", header->Size, str);
+                  break;
+               }
+               case DATA_TYPE_STREAM_INFO:
+               {
+                  char* str = (char*)&data[sizeof(TBufferHeader)];
+                  printf("%.*s\n", header->Size, str);
+                  break;
+               }
+               default:
+                  break;
+            }
+         }
       }
    }
 }
