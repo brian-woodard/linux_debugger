@@ -97,13 +97,6 @@ TDebugCommand GetCommand()
          return result;
       }
 
-      // TODO: Add error handling from backend
-      // if (index-1 >= breakpoints.size())
-      // {
-      //    printf("Invalid cmd: unknown breakpoint %d\n", index);
-      //    return DEBUG_CMD_UNKNOWN;
-      // }
-
       result.Command = DEBUG_CMD_DELETE_BREAKPOINT;
       result.Data.BpIdx.Index = strtoll(strings[1], 0, 10) - 1;
       return result;
@@ -163,8 +156,7 @@ TDebugCommand GetCommand()
 
          if (strings.size() != 3)
          {
-            printf("Invalid cmd: register read [register_name]\n");
-            result.Command = DEBUG_CMD_UNKNOWN;
+            result.Command = DEBUG_CMD_REGISTER_READ_ALL;
             return result;
          }
 
@@ -223,6 +215,32 @@ TDebugCommand GetCommand()
       result.Command = DEBUG_CMD_UNKNOWN;
       return result;
    }
+   else if (strcmp(strings[0], "data") == 0)
+   {
+      if (strings.size() < 4)
+      {
+         printf("Invalid cmd:\n");
+         printf("  data read [address] [bytes]\n");
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
+      }
+
+      if (strcmp(strings[1], "read") == 0)
+      {
+         result.Command = DEBUG_CMD_DATA_READ;
+         result.Data.Read.Address = strtoll(strings[2], 0, 16);
+         result.Data.Read.Bytes = strtoll(strings[3], 0, 10);
+
+         if (result.Data.Read.Bytes > 64)
+         {
+            printf("Max bytes that can be read is 64\n");
+            result.Command = DEBUG_CMD_UNKNOWN;
+            return result;
+         }
+
+         return result;
+      }
+   }
 
    printf("Unknown command\n");
    result.Command = DEBUG_CMD_UNKNOWN;
@@ -255,7 +273,7 @@ void RunConsole(CDebugBackend& Debugger)
 
          // process any data output from backend
          u8* data;
-         while ((data = Debugger.PopBuffer()))
+         while ((data = Debugger.PopData()))
          {
             TBufferHeader* header = (TBufferHeader*)data;
             switch (header->DataType)
@@ -272,11 +290,34 @@ void RunConsole(CDebugBackend& Debugger)
                   printf("WARNING: %.*s\n", header->Size, str);
                   break;
                }
+               case DATA_TYPE_STREAM_DEBUG:
+               {
+                  char* str = (char*)&data[sizeof(TBufferHeader)];
+                  printf("DEBUG: %.*s\n", header->Size, str);
+                  break;
+               }
                case DATA_TYPE_STREAM_INFO:
                {
                   char* str = (char*)&data[sizeof(TBufferHeader)];
                   printf("%.*s\n", header->Size, str);
                   break;
+               }
+               case DATA_TYPE_REGISTERS:
+               {
+                  TRegister* registers = (TRegister*)&data[sizeof(TBufferHeader)];
+                  printf("Register values:\n");
+                  for (int i = 0; i < REGISTER_COUNT; i++)
+                     printf("  %s: %.*s 0x%08x\n", RegisterStr[i], 8 - strlen(RegisterStr[i]), "          ", registers->RegArray[i]);
+               }
+               case DATA_TYPE_DATA:
+               {
+                  data += sizeof(TBufferHeader);
+
+                  u64 address = *(u64*)data;
+                  data += sizeof(u64);
+
+                  printf("Data read at address 0x%x bytes %d:\n", address, header->Size-sizeof(u64));
+                  printf("%s\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), address));
                }
                default:
                   break;

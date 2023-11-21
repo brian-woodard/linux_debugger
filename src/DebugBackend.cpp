@@ -19,7 +19,7 @@
    { \
       char msg[256]; \
       sprintf(msg, "ptrace error %s (%d) at %s:%d %s", strerror(errno), errno, __FILE__, __LINE__, __func__); \
-      PushString(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg)); \
+      PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg)); \
    } \
    retval; \
 })
@@ -112,6 +112,21 @@ u64 CDebugBackend::GetRegister(eRegister Register)
    return result;
 }
 
+bool CDebugBackend::GetRegisters(TRegister* Registers)
+{
+   bool result = false;
+   long status;
+
+   status = PTRACE(PTRACE_GETREGS, mChildPid, nullptr, &Registers->Reg);
+
+   if (status != -1)
+   {
+      result = true;
+   }
+
+   return result;
+}
+
 bool CDebugBackend::SetRegister(eRegister Register, u64 Value)
 {
    TRegister registers;
@@ -153,21 +168,28 @@ void CDebugBackend::AddBreakpoint(u64 Address)
 
 void CDebugBackend::DeleteBreakpoint(u64 Index)
 {
-   assert(Index < mBreakpoints.size());
-
-   u64 data = (GetData(mBreakpoints[Index].Address) & ~0xff) | mBreakpoints[Index].SavedData;
-   SetData(mBreakpoints[Index].Address, data);
-
-   if (mBreakpointHit == Index)
+   if (Index < mBreakpoints.size())
    {
-      mBreakpointHit = -1;
-   }
-   else if (mBreakpointHit != -1 && Index < mBreakpointHit)
-   {
-      mBreakpointHit -= 1;
-   }
+      u64 data = (GetData(mBreakpoints[Index].Address) & ~0xff) | mBreakpoints[Index].SavedData;
+      SetData(mBreakpoints[Index].Address, data);
 
-   mBreakpoints.erase(mBreakpoints.begin() + Index);
+      if (mBreakpointHit == Index)
+      {
+         mBreakpointHit = -1;
+      }
+      else if (mBreakpointHit != -1 && Index < mBreakpointHit)
+      {
+         mBreakpointHit -= 1;
+      }
+
+      mBreakpoints.erase(mBreakpoints.begin() + Index);
+   }
+   else
+   {
+      char msg[256];
+      sprintf(msg, "Invalid cmd, unknown breakpoint %d", Index+1);
+      PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+   }
 }
 
 void CDebugBackend::EnableBreakpoint(u64 Index)
@@ -199,12 +221,12 @@ void CDebugBackend::ListBreakpoints()
    char msg[256];
 
    sprintf(msg, "Number of breakpoints: %d", mBreakpoints.size());
-   PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+   PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
    for (size_t i = 0; i < mBreakpoints.size(); i++)
    {
       sprintf(msg, "  Breakpoint % 4d: 0x%x %s", i+1, mBreakpoints[i].Address, (!mBreakpoints[i].Enabled) ? "(disabled)" : "");
-      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
    }
 }
 
@@ -289,7 +311,7 @@ void CDebugBackend::HandleCommand()
          {
             char msg[256];
             sprintf(msg, "Target is not running");
-            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
          else
             Continue();
@@ -299,7 +321,7 @@ void CDebugBackend::HandleCommand()
          {
             char msg[256];
             sprintf(msg, "Target is already running, pid %d", mChildPid);
-            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
          else
          {
@@ -316,7 +338,7 @@ void CDebugBackend::HandleCommand()
          {
             char msg[256];
             sprintf(msg, "Target is not running");
-            PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
          else
             StepSingle();
@@ -340,7 +362,23 @@ void CDebugBackend::HandleCommand()
       {
          char msg[256];
          sprintf(msg, "Register %s contents: 0x%x", RegisterStr[mCommand.Data.Reg.Index], GetRegister((eRegister)mCommand.Data.Reg.Index));
-         PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         break;
+      }
+      case DEBUG_CMD_REGISTER_READ_ALL:
+      {
+         TRegister registers;
+
+         if (GetRegisters(&registers))
+         {
+            PushData(DATA_TYPE_REGISTERS, (u8*)&registers, sizeof(TRegister));
+         }
+         else
+         {
+            char msg[256];
+            sprintf(msg, "Failed to read registers");
+            PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         }
          break;
       }
       case DEBUG_CMD_REGISTER_WRITE:
@@ -353,7 +391,39 @@ void CDebugBackend::HandleCommand()
 
          SetRegister((eRegister)mCommand.Data.Reg.Index, mCommand.Data.Reg.Value);
          sprintf(msg, "Wrote Register %s contents: 0x%x", RegisterStr[mCommand.Data.Reg.Index], mCommand.Data.Reg.Value);
-         PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         break;
+      }
+      case DEBUG_CMD_DATA_READ:
+      {
+         u64 address = mCommand.Data.Read.Address;
+         u8 data[MAX_DATA + sizeof(u64)];
+         u8 index = 0;
+
+         // put address in first 8 bytes of data buffer going back to front end
+         *(u64*)data = address;
+
+         for (int i = 0; i < (mCommand.Data.Read.Bytes+7) / 8; i++)
+         {
+            index = (i * 8) + 8;
+            errno = 0;
+            *(u64*)&data[index] = GetData(address);
+            address += 8;
+
+            if (errno)
+               break;
+         }
+
+         if (errno)
+         {
+            char msg[256];
+            sprintf(msg, "Failed to read data");
+            PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         }
+         else
+         {
+            PushData(DATA_TYPE_DATA, (u8*)data, mCommand.Data.Read.Bytes + sizeof(u64));
+         }
          break;
       }
       default:
@@ -375,7 +445,7 @@ void CDebugBackend::GetSignalInfo()
 
    // not really sure what do with this info?
    //sprintf(msg, "got signal %s (%d) from %d code %d", strsignal(info.si_signo), info.si_signo, mChildPid, info.si_code);
-   //PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+   //PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 }
 
 void CDebugBackend::Wait()
@@ -391,7 +461,7 @@ void CDebugBackend::Wait()
       mTargetRunning = false;
 
       sprintf(msg, "Target execution exited cleanly");
-      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
       // start a new instance
       RestartTarget();
@@ -406,7 +476,7 @@ void CDebugBackend::Wait()
    if (bp != -1)
    {
       sprintf(msg, "Breakpoint %d hit at 0x%x", bp + 1, mBreakpoints[bp].Address);
-      PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
    }
 }
 
@@ -420,7 +490,7 @@ void CDebugBackend::RunTarget()
    }
 
    sprintf(msg, "Debugging started on %s, pid %d", mTarget.c_str(), getpid());
-   PushString(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+   PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
 }
@@ -440,7 +510,7 @@ void CDebugBackend::StartTarget()
       {
          char msg[256];
          sprintf(msg, "Error forking child process %s (%d)", strerror(errno), errno);
-         PushString(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
          mRunning = false;
          return;
       }
@@ -475,23 +545,26 @@ void CDebugBackend::RestartTarget()
    }
 }
 
-void CDebugBackend::PushString(eDataType DataType, u8* String, u32 Size)
+void CDebugBackend::PushData(eDataType DataType, u8* String, u32 Size)
 {
-   mMutex.lock();
-   TBufferHeader* header = (TBufferHeader*)&mOutputBuffer[mBufferIndex];
+   if (mBufferIndex + sizeof(TBufferHeader) + Size < OUTPUT_BUFFER)
+   {
+      mMutex.lock();
+      TBufferHeader* header = (TBufferHeader*)&mOutputBuffer[mBufferIndex];
 
-   header->DataType = DataType;
-   header->Size = Size;
+      header->DataType = DataType;
+      header->Size = Size;
 
-   mBufferIndex += sizeof(TBufferHeader);
+      mBufferIndex += sizeof(TBufferHeader);
 
-   memcpy(&mOutputBuffer[mBufferIndex], String, Size);
+      memcpy(&mOutputBuffer[mBufferIndex], String, Size);
 
-   mBufferIndex += Size;
-   mMutex.unlock();
+      mBufferIndex += Size;
+      mMutex.unlock();
+   }
 }
 
-u8* CDebugBackend::PopBuffer()
+u8* CDebugBackend::PopData()
 {
    u8* result = nullptr;
 
@@ -517,10 +590,10 @@ u8* CDebugBackend::PopBuffer()
 
 void CDebugBackend::RunDebugger()
 {
-   signal(SIGTERM, SigHandler);
-   signal(SIGTRAP, SigHandler);
-   signal(SIGINT, SigHandler);
-   signal(SIGSEGV, SigHandler);
+   // signal(SIGTERM, SigHandler);
+   // signal(SIGTRAP, SigHandler);
+   // signal(SIGINT, SigHandler);
+   // signal(SIGSEGV, SigHandler);
 
    mOutputBuffer = new u8[OUTPUT_BUFFER];
 
@@ -540,8 +613,6 @@ void CDebugBackend::RunDebugger()
 bool CDebugBackend::Run(const char* Filename)
 {
    mTarget = Filename;
-
-   // TODO: Verify target exists, and is executable
 
    // start thread to run debugger
    if (!mThread.joinable())

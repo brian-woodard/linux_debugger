@@ -21,6 +21,7 @@ typedef double   f64;
 const u8  SW_INTERRUPT_3 = 0xcc;
 const s32 MAX_COMMAND    = 1024;
 const u32 OUTPUT_BUFFER  = 1024 * 1024;
+const u32 MAX_DATA       = 64;
 
 #define ArrayCount(array) sizeof(array)/sizeof(array[0])
 
@@ -37,7 +38,9 @@ enum eDebugCommand
    DEBUG_CMD_STEP_INTO,
    DEBUG_CMD_STEP_SINGLE,
    DEBUG_CMD_REGISTER_READ,
+   DEBUG_CMD_REGISTER_READ_ALL,
    DEBUG_CMD_REGISTER_WRITE,
+   DEBUG_CMD_DATA_READ,
    DEBUG_CMD_RUN,
    DEBUG_CMD_QUIT,
    DEBUG_CMD_PROCESSED,
@@ -63,6 +66,12 @@ struct TDebugCommand
          u64 Index;
          u64 Value;
       } Reg;
+      struct TDataRead
+      {
+         u64 Address;
+         u64 Bytes;
+      } Read;
+
    } Data;
 };
 

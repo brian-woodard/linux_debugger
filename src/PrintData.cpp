@@ -4,11 +4,12 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <ctype.h>
 
 char* CPrintData::mDataString = nullptr;
 int   CPrintData::mDataLength = 0;
 
-const char* CPrintData::GetDataAsString(char* Data, int Length)
+const char* CPrintData::GetDataAsString(char* Data, int Length, unsigned long Address)
 {
    // format data received
    if (Length > 0)
@@ -30,7 +31,7 @@ const char* CPrintData::GetDataAsString(char* Data, int Length)
          mDataLength = length_required;
       }
 
-      GetTimeAsString();
+      memset(mDataString, 0, mDataLength);
 
       for (int i = 0; i < Length; i++)
       {
@@ -39,27 +40,30 @@ const char* CPrintData::GetDataAsString(char* Data, int Length)
             if (i != 0)
             {
                // print data as string
-               strcat(mDataString, "   (");
+               strcat(mDataString, "   |");
                memcpy(element, &Data[i-BYTES_PER_LINE], BYTES_PER_LINE);
                for (int j = 0; j < BYTES_PER_LINE; j++)
                {
                   // replace non-printable characters with '.'
-                  if (element[j] >= 0 && element[j] <= 31)
+                  if ((element[j] >= 0 && element[j] <= 31) || element[j] >= 127 || element[j] < 0)
                      element[j] = '.';
                }
                strcat(mDataString, element);
-               strcat(mDataString, ")");
+               strcat(mDataString, "|\n");
                memset(element, 0, sizeof(element));
             }
-            sprintf(element, "\n%08x:", i);
+            sprintf(element, "%08x:", Address + i);
             strcat(mDataString, element);
             memset(element, 0, sizeof(element));
          }
-         if (i % 2 == 0)
+
+         if (i % (BYTES_PER_LINE / 2) == 0)
          {
-            // add a space every 2 bytes
+            // add a space after halfway through the bytes on a line
             strcat(mDataString, " ");
          }
+         // add a space every byte
+         strcat(mDataString, " ");
 
          // print data
          sprintf(element, "%02x", (unsigned char)Data[i]);
@@ -70,33 +74,37 @@ const char* CPrintData::GetDataAsString(char* Data, int Length)
       if (Length % BYTES_PER_LINE != 0)
       {
          // pad with spaces and print data as string
-         for (int j = 0; j < ((BYTES_PER_LINE - (Length % BYTES_PER_LINE)) * 2) + ((BYTES_PER_LINE - (Length % BYTES_PER_LINE)) / 2); j++)
+         for (int j = 0; j < ((BYTES_PER_LINE - (Length % BYTES_PER_LINE)) * 3); j++)
             strcat(mDataString, " ");
-         strcat(mDataString, "   (");
+         
+         if (Length % BYTES_PER_LINE <= 8)
+            strcat(mDataString, " ");
+
+         strcat(mDataString, "   |");
          memcpy(element, &Data[Length-(Length % BYTES_PER_LINE)], Length % BYTES_PER_LINE);
          for (int j = 0; j < BYTES_PER_LINE; j++)
          {
             // replace non-printable characters with '.'
-            if (element[j] >= 0 && element[j] <= 31)
+            if ((element[j] >= 0 && element[j] <= 31) || element[j] >= 127 || element[j] < 0)
                element[j] = '.';
          }
          strcat(mDataString, element);
-         strcat(mDataString, ")");
+         strcat(mDataString, "|");
          memset(element, 0, sizeof(element));
       }
       else
       {
          // print data as string
-         strcat(mDataString, "   (");
+         strcat(mDataString, "   |");
          memcpy(element, &Data[Length-BYTES_PER_LINE], BYTES_PER_LINE);
          for (int j = 0; j < BYTES_PER_LINE; j++)
          {
             // replace non-printable characters with '.'
-            if (element[j] >= 0 && element[j] <= 31)
+            if ((element[j] >= 0 && element[j] <= 31) || element[j] >= 127 || element[j] < 0)
                element[j] = '.';
          }
          strcat(mDataString, element);
-         strcat(mDataString, ")");
+         strcat(mDataString, "|");
          memset(element, 0, sizeof(element));
       }
    }
@@ -120,8 +128,6 @@ const char* CPrintData::GetTimeAsString()
       mDataString = new char[20];
       mDataLength = 20;
    }
-
-   memset(mDataString, 0, mDataLength);
 
    gettimeofday(&tv, NULL);
    tm = localtime(&tv.tv_sec);

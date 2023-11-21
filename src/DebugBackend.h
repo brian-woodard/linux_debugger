@@ -14,21 +14,22 @@ public:
    CDebugBackend();
    ~CDebugBackend();
 
-   u64 GetData(u64 Address);
-   void SetData(u64 Address, u64 Value);
-
-   u64 GetRegister(eRegister Register);
-   bool SetRegister(eRegister Register, u64 Value);
-
    void SetCommand(TDebugCommand Command);
    eDebugCommand GetCommand() const { return mCommand.Command; }
 
    bool IsRunning() const { return mRunning; }
    bool Run(const char* Filename);
 
-   u8* PopBuffer();
+   u8* PopData();
 
 private:
+
+   u64 GetData(u64 Address);
+   void SetData(u64 Address, u64 Value);
+
+   u64 GetRegister(eRegister Register);
+   bool GetRegisters(TRegister* Registers);
+   bool SetRegister(eRegister Register, u64 Value);
 
    void AddBreakpoint(u64 Address);
    void DeleteBreakpoint(u64 Index);
@@ -50,7 +51,7 @@ private:
    void GetSignalInfo();
    void Wait();
 
-   void PushString(eDataType DataType, u8* String, u32 Size);
+   void PushData(eDataType DataType, u8* String, u32 Size);
 
    std::string              mTarget;
    std::thread              mThread;
