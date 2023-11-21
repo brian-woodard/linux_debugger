@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <elf.h>
+#include "PrintData.cpp"
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -159,7 +160,12 @@ int main(int argc, char** argv)
 
    buffer = ReadEntireFile(argv[1]);
 
-   if (buffer.Size)
+   if (0)
+   {
+      // dump binary of file
+      printf("%s\n", CPrintData::GetDataAsString((char*)buffer.Data, buffer.Size));
+   }
+   else if (buffer.Size)
    {
       Elf32_Ehdr* elf_header = (Elf32_Ehdr*)buffer.Data;
 

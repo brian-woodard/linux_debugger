@@ -5,13 +5,13 @@ class CPrintData
 {
 public:
 
-   static constexpr int BYTES_PER_LINE = 8;
-   static constexpr int CHARS_PER_LINE = 50;
+   static constexpr int BYTES_PER_LINE = 16;
+   static constexpr int CHARS_PER_LINE = 80;
 
    CPrintData() {}
    ~CPrintData() = default;
 
-   static const char* GetDataAsString(char* Data, int Length);
+   static const char* GetDataAsString(char* Data, int Length, unsigned long Address = 0);
    static const char* GetTimeAsString();
 
 private:

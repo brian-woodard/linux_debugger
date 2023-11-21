@@ -30,7 +30,7 @@ all: $(EXE)
 console: debugger.cpp
 	g++ debugger.cpp -o debugger
 
-elfdump: elfdump.cpp
+elfdump: elfdump.cpp PrintData.h PrintData.cpp
 	g++ elfdump.cpp -o elfdump
 
 $(EXE): $(OBJS)
