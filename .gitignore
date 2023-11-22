@@ -7,6 +7,7 @@ src/a.out
 src/debugger
 src/elfdump
 src/hello
+src/main
 src/imgui.ini
 vendor/glfw-3.3.8/tests
 vendor/glfw-3.3.8/docs

@@ -4,6 +4,9 @@ A simple Linux debugger, mainly for me to learn more about ELF / DWARF on Linux.
 
 TODO:
   * Add attach command line to attach to running process
+    * command line: ./debugger attach [pid]
+    * command while running: attach (list of pids matching target name)
+    * command while running: be able to change targets
   * Add command line history support (up to 50 unique history commands?)
   * If enter pressed with no text entered, run last command in history
   * Verify target exists, and is executable (use ELF parsing)
