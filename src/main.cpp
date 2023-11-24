@@ -11,10 +11,11 @@
 #include "RingBuffer.h"
 
 const char* clear_line = "                                                                            ";
+const int   MAX_LINE = 128;
 
 bool done = false;
 struct termios orig_stdin_termios;
-CRingBuffer<char[128], 50> ring;
+CRingBuffer<char[MAX_LINE], 50> ring;
 int history_index = 0;
 std::string line = "";
 
@@ -169,7 +170,11 @@ void ProcessKeyPress(int Key)
          }
 
          if (add_to_history)
-            ring.PushBack(line.c_str());
+         {
+            char text[MAX_LINE];
+            strncpy(text, line.c_str(), MAX_LINE);
+            ring.PushBack(&text);
+         }
          history_index = ring.Size();
          line = "";
          printf("\r\nEnter something\r\n>");

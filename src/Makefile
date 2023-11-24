@@ -28,7 +28,7 @@ all: $(EXE)
 	make elfdump
 
 console: debugger.cpp
-	g++ debugger.cpp -o debugger
+	g++ -g debugger.cpp -o debugger
 
 elfdump: elfdump.cpp PrintData.h PrintData.cpp
 	g++ elfdump.cpp -o elfdump

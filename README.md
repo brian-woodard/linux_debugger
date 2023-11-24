@@ -7,8 +7,11 @@ TODO:
     * command line: ./debugger attach [pid]
     * command while running: attach (list of pids matching target name)
     * command while running: be able to change targets
-  * Add command line history support (up to 50 unique history commands?)
-  * If enter pressed with no text entered, run last command in history
+  * Input handler
+    * Fix issue where we get spurious characters when read(stdin)... not sure what's wrong
+    * If enter pressed with no text entered, run last command in history
+    * Handle left/right arrow key for editing console commands
+      * Change mLine in CInputHandler to char[MAX_LINE] instead of C++ string
   * Verify target exists, and is executable (use ELF parsing)
   * Initial GUI
     * Add console window

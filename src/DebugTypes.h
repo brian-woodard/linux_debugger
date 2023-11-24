@@ -19,7 +19,6 @@ typedef float    f32;
 typedef double   f64;
 
 const u8  SW_INTERRUPT_3 = 0xcc;
-const s32 MAX_COMMAND    = 1024;
 const u32 OUTPUT_BUFFER  = 1024 * 1024;
 const u32 MAX_DATA       = 64;
 
