@@ -20,15 +20,20 @@
 
 #include "PrintData.cpp"
 #include "DebugBackend.cpp"
+#include "InputHandler.cpp"
 
-TDebugCommand GetCommand()
+TDebugCommand GetCommand(CInputHandler& Input)
 {
-   char               input[MAX_COMMAND] = {};
+   char               input[CInputHandler::MAX_LINE] = {};
    std::vector<char*> strings;
    TDebugCommand      result = {};
 
-   printf("\ndbg> ");
-   fgets(input, MAX_COMMAND-1, stdin);
+#if 0
+   printf("\r\ndbg> ");
+   fgets(input, CInputHandler::MAX_LINE-1, stdin);
+#else
+   Input.GetInput(input);
+#endif
 
    // trim newline
    int length = strlen(input);
@@ -79,7 +84,7 @@ TDebugCommand GetCommand()
    {
       if (strings.size() != 2)
       {
-         printf("Invalid cmd: break [address]\n");
+         printf("Invalid cmd: break [address]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -92,7 +97,7 @@ TDebugCommand GetCommand()
    {
       if (strings.size() != 2)
       {
-         printf("Invalid cmd: delete [breakpoint]\n");
+         printf("Invalid cmd: delete [breakpoint]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -105,7 +110,7 @@ TDebugCommand GetCommand()
    {
       if (strings.size() != 2)
       {
-         printf("Invalid cmd: enable [breakpoint]\n");
+         printf("Invalid cmd: enable [breakpoint]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -118,7 +123,7 @@ TDebugCommand GetCommand()
    {
       if (strings.size() != 2)
       {
-         printf("Invalid cmd: disable [breakpoint]\n");
+         printf("Invalid cmd: disable [breakpoint]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -131,7 +136,7 @@ TDebugCommand GetCommand()
    {
       if (strings.size() != 1)
       {
-         printf("Invalid cmd: list\n");
+         printf("Invalid cmd: list\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -143,9 +148,9 @@ TDebugCommand GetCommand()
    {
       if (strings.size() < 2)
       {
-         printf("Invalid cmd:\n");
-         printf("  register read [register_name]\n");
-         printf("  register write [register_name] [value]\n");
+         printf("Invalid cmd:\r\n");
+         printf("  register read [register_name]\r\n");
+         printf("  register write [register_name] [value]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -170,7 +175,7 @@ TDebugCommand GetCommand()
 
          if (register_name == REGISTER_COUNT)
          {
-            printf("Unknown register\n");
+            printf("Unknown register\r\n");
             result.Command = DEBUG_CMD_UNKNOWN;
             return result;
          }
@@ -186,7 +191,7 @@ TDebugCommand GetCommand()
 
          if (strings.size() != 4)
          {
-            printf("Invalid cmd: register write [register_name] [value]\n");
+            printf("Invalid cmd: register write [register_name] [value]\r\n");
             result.Command = DEBUG_CMD_UNKNOWN;
             return result;
          }
@@ -201,7 +206,7 @@ TDebugCommand GetCommand()
 
          if (register_name == REGISTER_COUNT)
          {
-            printf("Unknown register\n");
+            printf("Unknown register\r\n");
             result.Command = DEBUG_CMD_UNKNOWN;
             return result;
          }
@@ -219,8 +224,8 @@ TDebugCommand GetCommand()
    {
       if (strings.size() < 4)
       {
-         printf("Invalid cmd:\n");
-         printf("  data read [address] [bytes]\n");
+         printf("Invalid cmd:\r\n");
+         printf("  data read [address] [bytes]\r\n");
          result.Command = DEBUG_CMD_UNKNOWN;
          return result;
       }
@@ -233,7 +238,7 @@ TDebugCommand GetCommand()
 
          if (result.Data.Read.Bytes > 64)
          {
-            printf("Max bytes that can be read is 64\n");
+            printf("Max bytes that can be read is 64\r\n");
             result.Command = DEBUG_CMD_UNKNOWN;
             return result;
          }
@@ -242,12 +247,12 @@ TDebugCommand GetCommand()
       }
    }
 
-   printf("Unknown command\n");
+   printf("Unknown command\r\n");
    result.Command = DEBUG_CMD_UNKNOWN;
    return result;
 };
 
-void RunConsole(CDebugBackend& Debugger)
+void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
 {
    TDebugCommand cmd;
 
@@ -259,7 +264,7 @@ void RunConsole(CDebugBackend& Debugger)
 
    while (Debugger.IsRunning())
    {
-      cmd = GetCommand();
+      cmd = GetCommand(Input);
 
       if (cmd.Command != DEBUG_CMD_UNKNOWN)
       {
@@ -281,33 +286,33 @@ void RunConsole(CDebugBackend& Debugger)
                case DATA_TYPE_STREAM_ERROR:
                {
                   char* str = (char*)&data[sizeof(TBufferHeader)];
-                  printf("ERROR: %.*s\n", header->Size, str);
+                  printf("ERROR: %.*s\r\n", header->Size, str);
                   break;
                }
                case DATA_TYPE_STREAM_WARNING:
                {
                   char* str = (char*)&data[sizeof(TBufferHeader)];
-                  printf("WARNING: %.*s\n", header->Size, str);
+                  printf("WARNING: %.*s\r\n", header->Size, str);
                   break;
                }
                case DATA_TYPE_STREAM_DEBUG:
                {
                   char* str = (char*)&data[sizeof(TBufferHeader)];
-                  printf("DEBUG: %.*s\n", header->Size, str);
+                  printf("DEBUG: %.*s\r\n", header->Size, str);
                   break;
                }
                case DATA_TYPE_STREAM_INFO:
                {
                   char* str = (char*)&data[sizeof(TBufferHeader)];
-                  printf("%.*s\n", header->Size, str);
+                  printf("\r%.*s\r\n", header->Size, str);
                   break;
                }
                case DATA_TYPE_REGISTERS:
                {
                   TRegister* registers = (TRegister*)&data[sizeof(TBufferHeader)];
-                  printf("Register values:\n");
+                  printf("Register values:\r\n");
                   for (int i = 0; i < REGISTER_COUNT; i++)
-                     printf("  %s: %.*s 0x%08x\n", RegisterStr[i], 8 - strlen(RegisterStr[i]), "          ", registers->RegArray[i]);
+                     printf("  %s: %.*s 0x%08x\r\n", RegisterStr[i], 8 - strlen(RegisterStr[i]), "          ", registers->RegArray[i]);
                }
                case DATA_TYPE_DATA:
                {
@@ -316,8 +321,8 @@ void RunConsole(CDebugBackend& Debugger)
                   u64 address = *(u64*)data;
                   data += sizeof(u64);
 
-                  printf("Data read at address 0x%x bytes %d:\n", address, header->Size-sizeof(u64));
-                  printf("%s\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), address));
+                  printf("Data read at address 0x%x bytes %d:\r\n", address, header->Size-sizeof(u64));
+                  printf("%s\r\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), address));
                }
                default:
                   break;
@@ -330,16 +335,19 @@ void RunConsole(CDebugBackend& Debugger)
 int main(int argc, char** argv)
 {
    CDebugBackend debugger;
+   CInputHandler input("dbg> ", stdout);
+
+   //input.DisableRawMode();
 
    if (argc < 2)
    {
-      fprintf(stderr, "Expected a program name as argument\n");
+      fprintf(stderr, "Expected a program name as argument\r\n");
       return -1;
    }
 
    debugger.Run(argv[1]);
 
-   RunConsole(debugger);
+   RunConsole(debugger, input);
 
    return 0;
 }

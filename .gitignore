@@ -9,6 +9,7 @@ src/elfdump
 src/hello
 src/main
 src/imgui.ini
+src/log.txt
 vendor/glfw-3.3.8/tests
 vendor/glfw-3.3.8/docs
 vendor/glfw-3.3.8/CMakeCache.txt

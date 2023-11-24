@@ -35,7 +35,7 @@ public:
       for (uint32_t i = mHeadIdx; i < mHeadIdx + size; i++)
       {
          uint32_t idx = i % MAX;
-         std::cout << (i - mHeadIdx) << ": " << mBuffer[idx] << std::endl;
+         std::cout << std::setw(4) << (i - mHeadIdx) << " (" << (void*)&mBuffer[idx] << ") " << mBuffer[idx] << std::endl;
       }
 
       printf("%s\n", CPrintData::GetDataAsString((char*)mBuffer, size*sizeof(T)));
@@ -105,7 +105,7 @@ public:
       return result;
    }
 
-   void PushFront(const T Element)
+   void PushFront(const T* Element)
    {
       if (mHeadIdx == 0) return;
 
@@ -119,7 +119,7 @@ public:
       }
    }
 
-   void PushBack(const T Element)
+   void PushBack(const T* Element)
    {
       int idx = (mTailIdx++ % MAX);
 
