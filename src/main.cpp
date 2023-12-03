@@ -7,6 +7,8 @@
 #include <thread>
 #include <termios.h>
 
+#if 1
+
 #include "PrintData.cpp"
 #include "RingBuffer.h"
 
@@ -176,8 +178,17 @@ void ProcessKeyPress(int Key)
             ring.PushBack(&text);
          }
          history_index = ring.Size();
-         line = "";
-         printf("\r\nEnter something\r\n>");
+
+         if (line == "quit")
+         {
+            done = true;
+            printf("\r\n");
+         }
+         else
+         {
+            line = "";
+            printf("\r\nEnter something\r\n>");
+         }
          break;
       }
       case KEY_ARROW_DOWN:
@@ -254,3 +265,47 @@ int main(int argc, char** argv)
 
    return 0;
 }
+
+#else
+
+#include "InputHandler.h"
+#include "PrintData.cpp"
+
+bool done = false;
+
+int main(int argc, char** argv)
+{
+   char          text[CInputHandler::MAX_LINE];
+   CInputHandler input(">", stdout);
+
+   printf("Enter something\r\n");
+   fflush(stdout);
+
+   while (!done)
+   {
+      input.GetInput(text);
+
+      if (strcmp("quit", text) == 0)
+      {
+         done = true;
+      }
+      else
+      {
+         printf("Enter something\r\n");
+         fflush(stdout);
+      }
+   }
+
+#if 0
+   if (gui_init("Debugger"))
+   {
+      gui_run();
+   }
+
+   gui_shutdown();
+#endif
+
+   return 0;
+}
+
+#endif

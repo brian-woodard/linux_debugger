@@ -44,11 +44,10 @@ private:
    int ReadInput();
    void ProcessKeyPress(int Key);
 
+   char                                     mLine[MAX_LINE];
    struct termios                           mStdinTermios;
    CRingBuffer<char[MAX_LINE], MAX_HISTORY> mHistory;
    int                                      mHistoryIndex;
-   std::string                              mLine;
-   std::string                              mOutputLine;
    const char*                              mPrompt;
    FILE*                                    mStream;
 
