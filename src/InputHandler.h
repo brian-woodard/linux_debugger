@@ -37,8 +37,8 @@ private:
       KEY_PAGE_DOWN
    };
 
-   void AddCharToLine(char Key);
-   void RemoveCharFromLine();
+   void AddCharToLine(int Key);
+   void RemoveCharFromLine(int Key);
    void ClearLine();
    void ClearPrompt();
    void CopyToLine(const char* String);
