@@ -133,7 +133,7 @@ int CInputHandler::ReadInput()
 
    nread = read(STDIN_FILENO, &c, 1);
 
-   if (nread < 0)
+   if (nread <= 0)
       return nread;
 
    if (c == '\x1b')
@@ -231,6 +231,22 @@ void CInputHandler::ProcessKeyPress(int Key)
          {
             mHistory.PushBack(&mLine);
          }
+         else if (mHistory.Size() > 0)
+         {
+            // copy last command into line
+            uint32_t    hist_size = mHistory.Size();
+            const char* line = (const char*)mHistory.PeekAt(hist_size-1);
+            if (line)
+            {
+               int i;
+               for (i = 0; i < strlen(line); i++)
+               {
+                  mLine[i] = line[i];
+               }
+               mLine[i] = 0;
+               PutLine();
+            }
+         }
          mHistoryIndex = mHistory.Size();
          break;
       }
@@ -288,14 +304,12 @@ void CInputHandler::ProcessKeyPress(int Key)
       case KEY_ARROW_RIGHT:
          break;
       default:
+      {
+         size_t len = strlen(mLine);
+         if (len < MAX_LINE-1)
+            mLine[len] = (char)Key;
+         PutLine();
          break;
-   }
-
-   if (Key > 31 && Key < KEY_BACKSPACE)
-   {
-      size_t len = strlen(mLine);
-      if (len < MAX_LINE-1)
-         mLine[len] = (char)Key;
-      PutLine();
+      }
    }
 }
