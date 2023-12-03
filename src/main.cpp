@@ -184,7 +184,11 @@ void ProcessKeyPress(int Key)
          if (history_index < ring.Size()-1)
          {
             history_index++;
-            line = (char*)ring.PeekAt(history_index);
+            const char* hist_ptr = (const char*)ring.PeekAt(history_index);
+            if (hist_ptr)
+               line = hist_ptr;
+            else
+               line = "";
             printf("\r>%s", clear_line);
             printf("\r>%s", line.c_str());
          }
@@ -220,6 +224,7 @@ int main(int argc, char** argv)
    EnableRawMode();
 
    printf("Enter something\r\n>");
+   fflush(stdout);
 
    std::this_thread::sleep_for(std::chrono::milliseconds(10));
    ReadInput();
