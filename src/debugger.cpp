@@ -322,7 +322,7 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
                   data += sizeof(u64);
 
                   printf("Data read at address 0x%x bytes %d:\r\n", address, header->Size-sizeof(u64));
-                  printf("%s\r\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), address));
+                  printf("%s\r\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), "\r\n", address));
                }
                default:
                   break;
@@ -336,8 +336,6 @@ int main(int argc, char** argv)
 {
    CDebugBackend debugger;
    CInputHandler input("dbg> ", stdout);
-
-   //input.DisableRawMode();
 
    if (argc < 2)
    {

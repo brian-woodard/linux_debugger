@@ -7,6 +7,8 @@
 #include <thread>
 #include <termios.h>
 
+#if 1
+
 #include "PrintData.cpp"
 #include "RingBuffer.h"
 
@@ -176,15 +178,28 @@ void ProcessKeyPress(int Key)
             ring.PushBack(&text);
          }
          history_index = ring.Size();
-         line = "";
-         printf("\r\nEnter something\r\n>");
+
+         if (line == "quit")
+         {
+            done = true;
+            printf("\r\n");
+         }
+         else
+         {
+            line = "";
+            printf("\r\nEnter something\r\n>");
+         }
          break;
       }
       case KEY_ARROW_DOWN:
          if (history_index < ring.Size()-1)
          {
             history_index++;
-            line = (char*)ring.PeekAt(history_index);
+            const char* hist_ptr = (const char*)ring.PeekAt(history_index);
+            if (hist_ptr)
+               line = hist_ptr;
+            else
+               line = "";
             printf("\r>%s", clear_line);
             printf("\r>%s", line.c_str());
          }
@@ -220,6 +235,7 @@ int main(int argc, char** argv)
    EnableRawMode();
 
    printf("Enter something\r\n>");
+   fflush(stdout);
 
    std::this_thread::sleep_for(std::chrono::milliseconds(10));
    ReadInput();
@@ -249,3 +265,47 @@ int main(int argc, char** argv)
 
    return 0;
 }
+
+#else
+
+#include "InputHandler.h"
+#include "PrintData.cpp"
+
+bool done = false;
+
+int main(int argc, char** argv)
+{
+   char          text[CInputHandler::MAX_LINE];
+   CInputHandler input(">", stdout);
+
+   printf("Enter something\r\n");
+   fflush(stdout);
+
+   while (!done)
+   {
+      input.GetInput(text);
+
+      if (strcmp("quit", text) == 0)
+      {
+         done = true;
+      }
+      else
+      {
+         printf("Enter something\r\n");
+         fflush(stdout);
+      }
+   }
+
+#if 0
+   if (gui_init("Debugger"))
+   {
+      gui_run();
+   }
+
+   gui_shutdown();
+#endif
+
+   return 0;
+}
+
+#endif

@@ -9,8 +9,13 @@
 char* CPrintData::mDataString = nullptr;
 int   CPrintData::mDataLength = 0;
 
-const char* CPrintData::GetDataAsString(char* Data, int Length, unsigned long Address)
+const char* CPrintData::GetDataAsString(char* Data, int Length, const char* NewLine, unsigned long Address)
 {
+   const char* newline = "\n";
+
+   if (NewLine)
+      newline = NewLine;
+
    // format data received
    if (Length > 0)
    {
@@ -49,7 +54,8 @@ const char* CPrintData::GetDataAsString(char* Data, int Length, unsigned long Ad
                      element[j] = '.';
                }
                strcat(mDataString, element);
-               strcat(mDataString, "|\n");
+               strcat(mDataString, "|");
+               strcat(mDataString, newline);
                memset(element, 0, sizeof(element));
             }
             sprintf(element, "%08x:", Address + i);

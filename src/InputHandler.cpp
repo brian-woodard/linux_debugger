@@ -12,8 +12,7 @@ CInputHandler::CInputHandler(const char* Prompt, FILE* Stream)
    : mStdinTermios{},
      mHistory(),
      mHistoryIndex(0),
-     mLine(""),
-     mOutputLine(""),
+     mLine{},
      mPrompt(Prompt),
      mStream(Stream)
 {
@@ -35,27 +34,18 @@ int CInputHandler::GetInput(char* String)
    int i;
    int output_length;
 
-   // clear input stream
-   std::this_thread::sleep_for(std::chrono::milliseconds(10));
-   while (ReadInput() > 0)
-   {
-      // clear input
-   }
-
-   mOutputLine = "";
-   mLine = "";
+   memset(mLine, 0, sizeof(mLine));
+   fprintf(log_file, "print prompt [%s] line [%s]\n", mPrompt, mLine);
+   fflush(log_file);
    PutLine();
-
-   if (output_length >= MAX_LINE)
-      output_length = MAX_LINE-1;
 
    do
    {
       key = ReadInput();
 
-      if (key > 0 && key < KEY_BACKSPACE)
+      if (key > 0)
       {
-         fprintf(log_file, "got key %x, line [%s]\n", key, mLine.c_str());
+         fprintf(log_file, "got key %x, line [%s]\n", key, mLine);
          fflush(log_file);
          ProcessKeyPress(key);
       }
@@ -64,19 +54,14 @@ int CInputHandler::GetInput(char* String)
 
    } while (key != KEY_ENTER);
 
-   while (ReadInput() > 0)
-   {
-      // clear input
-   }
+   output_length = strlen(mLine);
 
-   fprintf(log_file, "got line [%s]\n", mOutputLine.c_str());
-   fflush(log_file);
-
-   output_length = mOutputLine.length();
+   // fprintf(log_file, "got line [%s] %d\n", mLine, output_length);
+   // fflush(log_file);
 
    for (i = 0; i < output_length; i++)
    {
-      String[i] = mOutputLine[i];
+      String[i] = mLine[i];
    }
    String[i] = 0;
 
@@ -99,7 +84,7 @@ void CInputHandler::PutLine(const char* Output)
    if (Output)
       fprintf(mStream, Output);
    else
-      fprintf(mStream, "\r%s%s", mPrompt, mLine.c_str());
+      fprintf(mStream, "\r%s%s", mPrompt, mLine);
    FlushStream();
 }
 
@@ -216,9 +201,9 @@ void CInputHandler::ProcessKeyPress(int Key)
          break;
       case KEY_BACKSPACE:
       {
-         size_t len = mLine.length();
+         size_t len = strlen(mLine);
          if (len > 0)
-            mLine.erase(mLine.begin()+len-1);
+            mLine[len-1] = 0;
          ClearLine();
          PutLine();
          break;
@@ -227,7 +212,7 @@ void CInputHandler::ProcessKeyPress(int Key)
       {
          bool add_to_history = false;
 
-         if (mLine.length() > 0)
+         if (strlen(mLine) > 0)
          {
             if (mHistory.Size() > 0)
             {
@@ -244,27 +229,35 @@ void CInputHandler::ProcessKeyPress(int Key)
 
          if (add_to_history)
          {
-            char text[MAX_LINE];
-            strncpy(text, mLine.c_str(), MAX_LINE);
-            mHistory.PushBack(&text);
+            mHistory.PushBack(&mLine);
          }
          mHistoryIndex = mHistory.Size();
-         mOutputLine = mLine;
-         mLine = "";
-         PutLine();
          break;
       }
       case KEY_ARROW_DOWN:
          if (mHistoryIndex < mHistory.Size()-1)
          {
             mHistoryIndex++;
-            mLine = (char*)mHistory.PeekAt(mHistoryIndex);
+            const char* line = (const char*)mHistory.PeekAt(mHistoryIndex);
+            if (line)
+            {
+               int i;
+               for (i = 0; i < strlen(line); i++)
+               {
+                  mLine[i] = line[i];
+               }
+               mLine[i] = 0;
+            }
+            else
+            {
+               memset(mLine, 0, sizeof(mLine));
+            }
             ClearLine();
             PutLine();
          }
          else
          {
-            mLine = "";
+            memset(mLine, 0, sizeof(mLine));
             ClearLine();
             PutLine();
          }
@@ -272,8 +265,21 @@ void CInputHandler::ProcessKeyPress(int Key)
       case KEY_ARROW_UP:
          if (mHistoryIndex > 0)
          {
-            mLine = (char*)mHistory.PeekAt(mHistoryIndex-1);
             mHistoryIndex--;
+            const char* line = (const char*)mHistory.PeekAt(mHistoryIndex);
+            if (line)
+            {
+               int i;
+               for (i = 0; i < strlen(line); i++)
+               {
+                  mLine[i] = line[i];
+               }
+               mLine[i] = 0;
+            }
+            else
+            {
+               memset(mLine, 0, sizeof(mLine));
+            }
             ClearLine();
             PutLine();
          }
@@ -287,7 +293,9 @@ void CInputHandler::ProcessKeyPress(int Key)
 
    if (Key > 31 && Key < KEY_BACKSPACE)
    {
-      mLine += (char)Key;
+      size_t len = strlen(mLine);
+      if (len < MAX_LINE-1)
+         mLine[len] = (char)Key;
       PutLine();
    }
 }

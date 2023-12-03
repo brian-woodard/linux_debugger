@@ -3,6 +3,7 @@
 *.a
 bin/debugger
 bin/imgui.ini
+bin/log.txt
 src/a.out
 src/debugger
 src/elfdump

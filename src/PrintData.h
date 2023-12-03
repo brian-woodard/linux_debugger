@@ -11,7 +11,7 @@ public:
    CPrintData() {}
    ~CPrintData() = default;
 
-   static const char* GetDataAsString(char* Data, int Length, unsigned long Address = 0);
+   static const char* GetDataAsString(char* Data, int Length, const char* NewLine = nullptr, unsigned long Address = 0);
    static const char* GetTimeAsString();
 
 private:
