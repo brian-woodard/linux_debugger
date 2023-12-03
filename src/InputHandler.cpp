@@ -58,7 +58,7 @@ int CInputHandler::GetInput(char* String)
    return output_length;
 }
 
-void CInputHandler::AddCharToLine(char Key)
+void CInputHandler::AddCharToLine(int Key)
 {
    size_t len = strlen(mLine);
 
@@ -70,20 +70,30 @@ void CInputHandler::AddCharToLine(char Key)
          {
             mLine[i+1] = mLine[i];
          }
-         mLine[mCursorCol] = Key;
+         mLine[mCursorCol] = (char)Key;
       }
       else
       {
-         mLine[len] = Key;
+         mLine[len] = (char)Key;
       }
       mCursorCol++;
    }
 }
 
-void CInputHandler::RemoveCharFromLine()
+void CInputHandler::RemoveCharFromLine(int Key)
 {
    size_t len = strlen(mLine);
-   if (len > 0 && mCursorCol > 0)
+   if (Key == KEY_DEL)
+   {
+      if (len > 0 && mCursorCol < len)
+      {
+         for (int i = mCursorCol; i < len; i++)
+         {
+            mLine[i] = mLine[i+1];
+         }
+      }
+   }
+   else if (len > 0 && mCursorCol > 0)
    {
       if (mCursorCol < len)
       {
@@ -274,12 +284,11 @@ void CInputHandler::ProcessKeyPress(int Key)
          // TODO: Handle Ctrl-C
          break;
       case KEY_BACKSPACE:
-      {
+      case KEY_DEL:
          ClearPrompt();
-         RemoveCharFromLine();
+         RemoveCharFromLine(Key);
          PutLine();
          break;
-      }
       case KEY_ENTER:
       {
          bool add_to_history = false;

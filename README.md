@@ -7,9 +7,7 @@ TODO:
     * command line: ./debugger attach [pid]
     * command while running: attach (list of pids matching target name)
     * command while running: be able to change targets
-  * Input handler
-    * DEL key should delete any characters to the right of the cursor
-    * Verify input handler correctly handles MAX_LINE (test with MAX_LINE=5)
+  * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Verify target exists, and is executable (use ELF parsing)
   * Initial GUI
     * Add console window
