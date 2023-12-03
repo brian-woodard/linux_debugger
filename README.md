@@ -8,7 +8,8 @@ TODO:
     * command while running: attach (list of pids matching target name)
     * command while running: be able to change targets
   * Input handler
-    * Handle left/right arrow key for editing console commands
+    * DEL key should delete any characters to the right of the cursor
+    * Verify input handler correctly handles MAX_LINE (test with MAX_LINE=5)
   * Verify target exists, and is executable (use ELF parsing)
   * Initial GUI
     * Add console window

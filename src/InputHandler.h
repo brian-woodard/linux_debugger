@@ -37,7 +37,11 @@ private:
       KEY_PAGE_DOWN
    };
 
+   void AddCharToLine(char Key);
+   void RemoveCharFromLine();
    void ClearLine();
+   void ClearPrompt();
+   void CopyToLine(const char* String);
    void PutLine(const char* Output = nullptr);
    void FlushStream();
 
@@ -48,6 +52,7 @@ private:
    struct termios                           mStdinTermios;
    CRingBuffer<char[MAX_LINE], MAX_HISTORY> mHistory;
    int                                      mHistoryIndex;
+   int                                      mCursorCol;
    const char*                              mPrompt;
    FILE*                                    mStream;
 
