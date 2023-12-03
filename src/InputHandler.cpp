@@ -6,26 +6,21 @@
 #include <thread>
 #include "InputHandler.h"
 
-FILE* log_file = nullptr;
-
 CInputHandler::CInputHandler(const char* Prompt, FILE* Stream)
    : mStdinTermios{},
      mHistory(),
      mHistoryIndex(0),
+     mCursorCol(0),
      mLine{},
      mPrompt(Prompt),
      mStream(Stream)
 {
    EnableRawMode();
-
-   log_file = fopen("log.txt", "w");
 }
 
 CInputHandler::~CInputHandler()
 {
    DisableRawMode();
-
-   fclose(log_file);
 }
 
 int CInputHandler::GetInput(char* String)
@@ -34,9 +29,7 @@ int CInputHandler::GetInput(char* String)
    int i;
    int output_length;
 
-   memset(mLine, 0, sizeof(mLine));
-   fprintf(log_file, "print prompt [%s] line [%s]\n", mPrompt, mLine);
-   fflush(log_file);
+   ClearLine();
    PutLine();
 
    do
@@ -45,8 +38,6 @@ int CInputHandler::GetInput(char* String)
 
       if (key > 0)
       {
-         fprintf(log_file, "got key %x, line [%s]\n", key, mLine);
-         fflush(log_file);
          ProcessKeyPress(key);
       }
 
@@ -55,9 +46,6 @@ int CInputHandler::GetInput(char* String)
    } while (key != KEY_ENTER);
 
    output_length = strlen(mLine);
-
-   // fprintf(log_file, "got line [%s] %d\n", mLine, output_length);
-   // fflush(log_file);
 
    for (i = 0; i < output_length; i++)
    {
@@ -70,12 +58,89 @@ int CInputHandler::GetInput(char* String)
    return output_length;
 }
 
+void CInputHandler::AddCharToLine(char Key)
+{
+   size_t len = strlen(mLine);
+
+   if (len < MAX_LINE-1)
+   {
+      if (mCursorCol < len)
+      {
+         for (int i = len+1; i >= mCursorCol; i--)
+         {
+            mLine[i+1] = mLine[i];
+         }
+         mLine[mCursorCol] = Key;
+      }
+      else
+      {
+         mLine[len] = Key;
+      }
+      mCursorCol++;
+   }
+}
+
+void CInputHandler::RemoveCharFromLine()
+{
+   size_t len = strlen(mLine);
+   if (len > 0 && mCursorCol > 0)
+   {
+      if (mCursorCol < len)
+      {
+         for (int i = mCursorCol-1; i < len; i++)
+         {
+            mLine[i] = mLine[i+1];
+         }
+      }
+      else
+      {
+         mLine[len-1] = 0;
+      }
+      mCursorCol--;
+   }
+}
+
 void CInputHandler::ClearLine()
+{
+   for (int i = 0; i < MAX_LINE; i++)
+   {
+      mLine[i] = 0;
+   }
+   mCursorCol = 0;
+}
+
+void CInputHandler::ClearPrompt()
 {
    fprintf(mStream, "\r%s", mPrompt);
    for (int i = 0; i < MAX_LINE; i++)
    {
       fprintf(mStream, " ");
+   }
+}
+
+void CInputHandler::CopyToLine(const char* String)
+{
+   if (String)
+   {
+      int i;
+      int len = strlen(String);
+
+      if (len > MAX_LINE) len = MAX_LINE;
+
+      for (i = 0; i < len; i++)
+      {
+         mLine[i] = String[i];
+      }
+      for (; i < MAX_LINE; i++)
+      {
+         mLine[i] = 0;
+      }
+      mLine[i] = 0;
+      mCursorCol = len;
+   }
+   else
+   {
+      ClearLine();
    }
 }
 
@@ -85,6 +150,15 @@ void CInputHandler::PutLine(const char* Output)
       fprintf(mStream, Output);
    else
       fprintf(mStream, "\r%s%s", mPrompt, mLine);
+
+   if (mCursorCol < strlen(mLine))
+   {
+      fprintf(mStream, "\r%s", mPrompt);
+      for (int i = 0; i < mCursorCol; i++)
+      {
+         fprintf(mStream, "%c", mLine[i]);
+      }
+   }
    FlushStream();
 }
 
@@ -201,10 +275,8 @@ void CInputHandler::ProcessKeyPress(int Key)
          break;
       case KEY_BACKSPACE:
       {
-         size_t len = strlen(mLine);
-         if (len > 0)
-            mLine[len-1] = 0;
-         ClearLine();
+         ClearPrompt();
+         RemoveCharFromLine();
          PutLine();
          break;
       }
@@ -216,7 +288,7 @@ void CInputHandler::ProcessKeyPress(int Key)
          {
             if (mHistory.Size() > 0)
             {
-               if (mLine != (char*)mHistory.PeekAt(mHistory.Size()-1))
+               if (strcmp(mLine, (const char*)mHistory.PeekAt(mHistory.Size()-1)) != 0)
                {
                   add_to_history = true;
                }
@@ -238,43 +310,26 @@ void CInputHandler::ProcessKeyPress(int Key)
             const char* line = (const char*)mHistory.PeekAt(hist_size-1);
             if (line)
             {
-               int i;
-               for (i = 0; i < strlen(line); i++)
-               {
-                  mLine[i] = line[i];
-               }
-               mLine[i] = 0;
+               CopyToLine(line);
                PutLine();
             }
          }
+         mCursorCol = 0;
          mHistoryIndex = mHistory.Size();
          break;
       }
       case KEY_ARROW_DOWN:
-         if (mHistoryIndex < mHistory.Size()-1)
+         if (mHistoryIndex < mHistory.Size())
          {
             mHistoryIndex++;
-            const char* line = (const char*)mHistory.PeekAt(mHistoryIndex);
-            if (line)
-            {
-               int i;
-               for (i = 0; i < strlen(line); i++)
-               {
-                  mLine[i] = line[i];
-               }
-               mLine[i] = 0;
-            }
-            else
-            {
-               memset(mLine, 0, sizeof(mLine));
-            }
-            ClearLine();
+            CopyToLine((const char*)mHistory.PeekAt(mHistoryIndex));
+            ClearPrompt();
             PutLine();
          }
          else
          {
-            memset(mLine, 0, sizeof(mLine));
             ClearLine();
+            ClearPrompt();
             PutLine();
          }
          break;
@@ -282,32 +337,36 @@ void CInputHandler::ProcessKeyPress(int Key)
          if (mHistoryIndex > 0)
          {
             mHistoryIndex--;
-            const char* line = (const char*)mHistory.PeekAt(mHistoryIndex);
-            if (line)
-            {
-               int i;
-               for (i = 0; i < strlen(line); i++)
-               {
-                  mLine[i] = line[i];
-               }
-               mLine[i] = 0;
-            }
-            else
-            {
-               memset(mLine, 0, sizeof(mLine));
-            }
-            ClearLine();
+            CopyToLine((const char*)mHistory.PeekAt(mHistoryIndex));
+            ClearPrompt();
             PutLine();
          }
          break;
       case KEY_ARROW_LEFT:
+         if (mCursorCol > 0)
+         {
+            mCursorCol--;
+            PutLine();
+         }
+         break;
       case KEY_ARROW_RIGHT:
+         if (mCursorCol < strlen(mLine))
+         {
+            mCursorCol++;
+            PutLine();
+         }
+         break;
+      case KEY_HOME:
+         mCursorCol = 0;
+         PutLine();
+         break;
+      case KEY_END:
+         mCursorCol = strlen(mLine);
+         PutLine();
          break;
       default:
       {
-         size_t len = strlen(mLine);
-         if (len < MAX_LINE-1)
-            mLine[len] = (char)Key;
+         AddCharToLine(Key);
          PutLine();
          break;
       }
