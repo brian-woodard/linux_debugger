@@ -28,12 +28,7 @@ TDebugCommand GetCommand(CInputHandler& Input)
    std::vector<char*> strings;
    TDebugCommand      result = {};
 
-#if 0
-   printf("\r\ndbg> ");
-   fgets(input, CInputHandler::MAX_LINE-1, stdin);
-#else
    Input.GetInput(input);
-#endif
 
    // trim newline
    int length = strlen(input);
