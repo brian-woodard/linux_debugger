@@ -25,14 +25,14 @@ CInputHandler::~CInputHandler()
 
 int CInputHandler::GetInput(char* String)
 {
-   int key;
+   int key = 0;
    int i;
    int output_length;
 
    ClearLine();
    PutLine();
 
-   do
+   while (key != KEY_ENTER)
    {
       key = ReadInput();
 
@@ -42,8 +42,7 @@ int CInputHandler::GetInput(char* String)
       }
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-   } while (key != KEY_ENTER);
+   } 
 
    output_length = strlen(mLine);
 
@@ -53,6 +52,7 @@ int CInputHandler::GetInput(char* String)
    }
    String[i] = 0;
 
+   ClearLine();
    PutLine("\r\n");
 
    return output_length;
@@ -212,8 +212,8 @@ int CInputHandler::EnableRawMode()
 
 int CInputHandler::ReadInput()
 {
-   int nread;
-   char c;
+   int nread = 0;
+   char c = 0;
 
    nread = read(STDIN_FILENO, &c, 1);
 

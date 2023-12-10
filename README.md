@@ -8,9 +8,12 @@ TODO:
     * command while running: attach (list of pids matching target name)
     * command while running: be able to change targets
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
+  * Add tab completion for commands
+  * Get output from debugged program into a separate debug output stream
   * Verify target exists, and is executable (use ELF parsing)
   * Initial GUI
     * Add console window
     * Add register window to display register values
+    * Add output window (output stream from debugged program)
     * Add data window to display a block of data (current view, some data around RIP?)
     * Add initial disassembly of data into cpu mnemonics

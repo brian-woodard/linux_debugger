@@ -482,21 +482,18 @@ void CDebugBackend::Wait()
 
 void CDebugBackend::RunTarget()
 {
-   char msg[256];
-
    if (PTRACE(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
    {
       return;
    }
-
-   sprintf(msg, "Debugging started on %s, pid %d", mTarget.c_str(), getpid());
-   PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
 }
 
 void CDebugBackend::StartTarget()
 {
+   char msg[256];
+
    if (!mTargetRunning)
    {
       mChildPid = fork();
@@ -514,6 +511,9 @@ void CDebugBackend::StartTarget()
          mRunning = false;
          return;
       }
+
+      sprintf(msg, "Debugging started on %s, pid %d", mTarget.c_str(), mChildPid);
+      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
       // Wait for child to stop on its first instruction
       Wait();
