@@ -10,7 +10,7 @@ TODO:
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Add tab completion for commands
   * Get output from debugged program into a separate debug output stream
-  * Verify target exists, and is executable (use ELF parsing)
+  * Implement DEBUG_CMD_DATA_WRITE to write data?
   * Initial GUI
     * Add console window
     * Add register window to display register values

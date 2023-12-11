@@ -24,6 +24,12 @@ const u32 MAX_DATA       = 64;
 
 #define ArrayCount(array) sizeof(array)/sizeof(array[0])
 
+struct TBuffer
+{
+   u8* Data;
+   u64 Size;
+};
+
 enum eDebugCommand
 {
    DEBUG_CMD_UNKNOWN,
@@ -40,6 +46,8 @@ enum eDebugCommand
    DEBUG_CMD_REGISTER_READ_ALL,
    DEBUG_CMD_REGISTER_WRITE,
    DEBUG_CMD_DATA_READ,
+   DEBUG_CMD_GET_TARGET,
+   DEBUG_CMD_SET_TARGET,
    DEBUG_CMD_RUN,
    DEBUG_CMD_QUIT,
    DEBUG_CMD_PROCESSED,
@@ -70,6 +78,11 @@ struct TDebugCommand
          u64 Address;
          u64 Bytes;
       } Read;
+      struct TStringData
+      {
+         u8* String;
+         u64 Size;
+      } String;
 
    } Data;
 };
@@ -146,4 +159,54 @@ struct TBufferHeader
 {
    eDataType DataType;
    u32       Size;
+};
+
+// ELF Header types and constants
+#define ELF_NIDENT 16
+
+struct TElfHeader64
+{
+   u8  e_ident[ELF_NIDENT]; // Magic number and other info
+   u16 e_type;              // Object file type 
+   u16 e_machine;           // Architecture
+   u32 e_version;           // Object file version
+   u64 e_entry;             // Entry point virtual address
+   u64 e_phoff;             // Program header table file offset
+   u64 e_shoff;             // Section header table file offset
+   u32 e_flags;             // Processor-specific flags
+   u16 e_ehsize;            // ELF header size in bytes
+   u16 e_phentsize;         // Program header table entry size
+   u16 e_phnum;             // Program header table entry count
+   u16 e_shentsize;         // Section header table entry size
+   u16 e_shnum;             // Section header table entry count
+   u16 e_shstrndx;          // Section header string table index
+} Elf64_Ehdr;
+
+// Fields in the e_ident array. The ELF_* macros are indices into the
+// array. The macros under each ELF_* macro are the values the byte
+// may have.
+
+#define ELF_MAGIC_0     0     // File identification byte 0 index
+#define ELF_MAGIC_0_VAL 0x7f  // Magic number byte 0
+
+#define ELF_MAGIC_1     1     // File identification byte 1 index
+#define ELF_MAGIC_1_VAL 'E'   // Magic number byte 1
+
+#define ELF_MAGIC_2     2     // File identification byte 2 index
+#define ELF_MAGIC_2_VAL 'L'   // Magic number byte 2
+
+#define ELF_MAGIC_3     3     // File identification byte 3 index
+#define ELF_MAGIC_3_VAL 'F'   // Magic number byte 3
+
+#define ELF_MAGIC       "\177ELF"
+#define ELF_MAGIC_SIZE  4
+
+#define ELF_CLASS       4     // File class byte index
+
+enum eElfClass
+{
+   ELF_CLASS_NONE,
+   ELF_CLASS_32BIT,
+   ELF_CLASS_64BIT,
+   ELF_CLASS_COUNT
 };

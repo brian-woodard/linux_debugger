@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include "DebugBackend.h"
+#include "DebugUtils.h"
 
 #define PTRACE(Request, Pid, Addr, Data) ({ \
    long retval = 0; \
@@ -67,6 +68,7 @@ CDebugBackend::CDebugBackend()
      mThread(),
      mMutex(),
      mBreakpoints(),
+     mTargetData{},
      mOutputBuffer(nullptr),
      mBufferIndex(0),
      mChildPid(0),
@@ -304,12 +306,13 @@ void CDebugBackend::SetCommand(TDebugCommand Command)
 
 void CDebugBackend::HandleCommand()
 {
+   char msg[256];
+
    switch (mCommand.Command)
    {
       case DEBUG_CMD_CONTINUE:
          if (!mTargetRunning)
          {
-            char msg[256];
             sprintf(msg, "Target is not running");
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
@@ -317,9 +320,13 @@ void CDebugBackend::HandleCommand()
             Continue();
          break;
       case DEBUG_CMD_RUN:
-         if (mTargetRunning)
+         if (mTarget.length() == 0)
          {
-            char msg[256];
+            sprintf(msg, "No Target is defined");
+            PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         }
+         else if (mTargetRunning)
+         {
             sprintf(msg, "Target is already running, pid %d", mChildPid);
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
@@ -336,7 +343,6 @@ void CDebugBackend::HandleCommand()
       case DEBUG_CMD_STEP_SINGLE:
          if (!mTargetRunning)
          {
-            char msg[256];
             sprintf(msg, "Target is not running");
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
@@ -360,7 +366,6 @@ void CDebugBackend::HandleCommand()
          break;
       case DEBUG_CMD_REGISTER_READ:
       {
-         char msg[256];
          sprintf(msg, "Register %s contents: 0x%x", RegisterStr[mCommand.Data.Reg.Index], GetRegister((eRegister)mCommand.Data.Reg.Index));
          PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          break;
@@ -375,7 +380,6 @@ void CDebugBackend::HandleCommand()
          }
          else
          {
-            char msg[256];
             sprintf(msg, "Failed to read registers");
             PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
          }
@@ -383,8 +387,6 @@ void CDebugBackend::HandleCommand()
       }
       case DEBUG_CMD_REGISTER_WRITE:
       {
-         char msg[256];
-
          // if writing to instruction pointer, clear breakpoint hit index
          if (mCommand.Data.Reg.Index == REGISTER_RIP)
             mBreakpointHit = -1;
@@ -416,7 +418,6 @@ void CDebugBackend::HandleCommand()
 
          if (errno)
          {
-            char msg[256];
             sprintf(msg, "Failed to read data");
             PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
          }
@@ -426,6 +427,33 @@ void CDebugBackend::HandleCommand()
          }
          break;
       }
+      case DEBUG_CMD_GET_TARGET:
+         if (mTarget.length())
+         {
+            char target_pid[100] = {};
+
+            if (mTargetRunning)
+            {
+               sprintf(target_pid, " (pid %d)", mChildPid);
+            }
+
+            sprintf(msg, "Target %s%s", mTarget.c_str(), target_pid);
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
+         else
+         {
+            sprintf(msg, "No Target is defined");
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
+         break;
+      case DEBUG_CMD_SET_TARGET:
+         mTarget = (char*)mCommand.Data.String.String;
+         VerifyTarget();
+         mBreakpoints.clear();
+         delete [] mCommand.Data.String.String;
+         sprintf(msg, "Target is now: %s", mTarget.c_str());
+         PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         break;
       default:
          break;
    }
@@ -494,7 +522,7 @@ void CDebugBackend::StartTarget()
 {
    char msg[256];
 
-   if (!mTargetRunning)
+   if (!mTargetRunning && mTarget.length())
    {
       mChildPid = fork();
 
@@ -542,6 +570,33 @@ void CDebugBackend::RestartTarget()
    for (size_t i = num_breakpoints; i > 0; i--)
    {
       mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
+   }
+}
+
+void CDebugBackend::VerifyTarget()
+{
+   char msg[256];
+
+   if (mTarget.length())
+   {
+      mTargetData = ReadEntireFile(mTarget.c_str());
+
+      if (mTargetData.Size == 0)
+      {
+         sprintf(msg, "Couldn't read target %s", mTarget.c_str());
+         PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         mTarget = "";
+      }
+      else if (!IsFileElf64(mTargetData))
+      {
+         sprintf(msg, "Target %s is not a 64-bit ELF executable", mTarget.c_str());
+         PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         mTarget = "";
+         
+         delete [] mTargetData.Data;
+         mTargetData.Data = nullptr;
+         mTargetData.Size = 0;
+      }
    }
 }
 
@@ -596,6 +651,8 @@ void CDebugBackend::RunDebugger()
    // signal(SIGSEGV, SigHandler);
 
    mOutputBuffer = new u8[OUTPUT_BUFFER];
+
+   VerifyTarget();
 
    StartTarget();
 
