@@ -447,12 +447,16 @@ void CDebugBackend::HandleCommand()
          }
          break;
       case DEBUG_CMD_SET_TARGET:
-         mTarget = (char*)mCommand.Data.String.String;
-         VerifyTarget();
-         mBreakpoints.clear();
-         delete [] mCommand.Data.String.String;
-         sprintf(msg, "Target is now: %s", mTarget.c_str());
-         PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         if (mCommand.Data.String.String)
+         {
+            mTarget = (char*)mCommand.Data.String.String;
+            mBreakpoints.clear();
+            VerifyTarget();
+            StartTarget();
+            delete [] mCommand.Data.String.String;
+            sprintf(msg, "Target is now: %s", mTarget.c_str());
+            PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
          break;
       default:
          break;
@@ -521,6 +525,8 @@ void CDebugBackend::RunTarget()
 void CDebugBackend::StartTarget()
 {
    char msg[256];
+
+   mBreakpointHit = -1;
 
    if (!mTargetRunning && mTarget.length())
    {
