@@ -21,6 +21,7 @@
 #include "PrintData.cpp"
 #include "DebugBackend.cpp"
 #include "InputHandler.cpp"
+#include "DebugUtils.cpp"
 
 TDebugCommand GetCommand(CInputHandler& Input)
 {
@@ -240,6 +241,30 @@ TDebugCommand GetCommand(CInputHandler& Input)
 
          return result;
       }
+   }
+   else if (strcmp(strings[0], "target") == 0)
+   {
+      if (strings.size() > 2)
+      {
+         printf("Invalid cmd:\r\n");
+         printf("  target [executable]\r\n");
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
+      }
+
+      if (strings.size() == 1)
+      {
+         result.Command = DEBUG_CMD_GET_TARGET;
+      }
+      else
+      {
+         result.Command = DEBUG_CMD_SET_TARGET;
+         result.Data.String.Size = strlen(strings[1]) + 1;
+         result.Data.String.String = new u8[result.Data.String.Size];
+         memcpy(result.Data.String.String, strings[1], result.Data.String.Size);
+      }
+
+      return result;
    }
 
    printf("Unknown command\r\n");

@@ -47,6 +47,7 @@ private:
    void RunDebugger();
    void StartTarget();
    void RestartTarget();
+   void VerifyTarget();
 
    void GetSignalInfo();
    void Wait();
@@ -57,6 +58,7 @@ private:
    std::thread              mThread;
    std::mutex               mMutex;
    std::vector<TBreakpoint> mBreakpoints;
+   TBuffer                  mTargetData;
    u8*                      mOutputBuffer;
    u32                      mBufferIndex;
    u32                      mReadIndex;
