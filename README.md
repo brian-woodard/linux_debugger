@@ -10,6 +10,8 @@ TODO:
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Add tab completion for commands
   * Get output from debugged program into a separate debug output stream
+  * Handle a debugee that loops forever, when target is changed, need to stop the current process first
+    or if a re-run is commanded, make sure to stop first debugee
   * Implement DEBUG_CMD_DATA_WRITE to write data?
   * Initial GUI
     * Add console window
