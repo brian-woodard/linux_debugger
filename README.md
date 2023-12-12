@@ -13,6 +13,11 @@ TODO:
   * Handle a debugee that loops forever, when target is changed, need to stop the current process first
     or if a re-run is commanded, make sure to stop first debugee
   * Implement DEBUG_CMD_DATA_WRITE to write data?
+  * Breakout command parsing into a DebugFrontend class
+  * Change Frontend command packaging, right now only one command is allowed "per frame". Have it perform more like the backend
+    stream output. Allocate a chunk of memory up front, and that will allow multiple commands to be pushed to the command queue.
+    The backend will then retire them one-by-one. May not ever need multiple commands per frame, but this will get rid of the
+    ugly "new" and "delete" needed for strings (like the "target [exec]" command)
   * Initial GUI
     * Add console window
     * Add register window to display register values
