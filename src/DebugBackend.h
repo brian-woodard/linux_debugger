@@ -46,7 +46,7 @@ private:
    void RunTarget();
    void RunDebugger();
    void StartTarget();
-   void RestartTarget();
+   void StopTarget();
    void VerifyTarget();
 
    void GetSignalInfo();

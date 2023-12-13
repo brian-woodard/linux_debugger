@@ -256,7 +256,7 @@ void CDebugBackend::Continue()
       StepOverBreakpoint();
 
    PTRACE(PTRACE_CONT, mChildPid, nullptr, nullptr);
-   
+
    Wait();
 }
 
@@ -334,7 +334,7 @@ void CDebugBackend::HandleCommand()
          {
             if (WIFEXITED(mWaitStatus))
             {
-               RestartTarget();
+               StartTarget();
             }
             mTargetRunning = true;
             Continue();
@@ -432,12 +432,12 @@ void CDebugBackend::HandleCommand()
          {
             char target_pid[100] = {};
 
-            if (mTargetRunning)
+            if (mChildPid)
             {
-               sprintf(target_pid, " (pid %d)", mChildPid);
+               sprintf(target_pid, " (pid %d%s)", mChildPid, mTargetRunning ? " running" : "");
             }
 
-            sprintf(msg, "Target %s%s", mTarget.c_str(), target_pid);
+            sprintf(msg, "Target: %s%s", mTarget.c_str(), target_pid);
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
          else
@@ -450,12 +450,38 @@ void CDebugBackend::HandleCommand()
          if (mCommand.Data.String.String)
          {
             mTarget = (char*)mCommand.Data.String.String;
+
+            if (mChildPid)
+               StopTarget();
+
             mBreakpoints.clear();
             VerifyTarget();
             StartTarget();
             delete [] mCommand.Data.String.String;
             sprintf(msg, "Target is now: %s", mTarget.c_str());
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+         }
+         break;
+      case DEBUG_CMD_START:
+         if (mChildPid)
+         {
+            sprintf(msg, "Target has already been started, pid %d", mChildPid);
+            PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         }
+         else
+         {
+            StartTarget();
+         }
+         break;
+      case DEBUG_CMD_STOP:
+         if (mChildPid == 0)
+         {
+            sprintf(msg, "Target has not been started");
+            PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+         }
+         else
+         {
+            StopTarget();
          }
          break;
       default:
@@ -496,7 +522,7 @@ void CDebugBackend::Wait()
       PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
 
       // start a new instance
-      RestartTarget();
+      StartTarget();
       return;
    }
 
@@ -554,29 +580,39 @@ void CDebugBackend::StartTarget()
 
       //PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
    }
-}
 
-void CDebugBackend::RestartTarget()
-{
-   StartTarget();
-
-   // set all breakpoints on new instance
-   size_t num_breakpoints = mBreakpoints.size();
-   for (size_t i = 0; i < num_breakpoints; i++)
+   if (mBreakpoints.size() > 0)
    {
-      AddBreakpoint(mBreakpoints[i].Address);
-      if (!mBreakpoints[i].Enabled)
+      // set all breakpoints on new instance
+      size_t num_breakpoints = mBreakpoints.size();
+      for (size_t i = 0; i < num_breakpoints; i++)
       {
-         size_t new_bp_idx = mBreakpoints.size();
-         DisableBreakpoint(new_bp_idx);
+         AddBreakpoint(mBreakpoints[i].Address);
+         if (!mBreakpoints[i].Enabled)
+         {
+            size_t new_bp_idx = mBreakpoints.size();
+            DisableBreakpoint(new_bp_idx);
+         }
+      }
+
+      // delete old breakpoints in reverse order
+      for (size_t i = num_breakpoints; i > 0; i--)
+      {
+         mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
       }
    }
+}
 
-   // delete old breakpoints in reverse order
-   for (size_t i = num_breakpoints; i > 0; i--)
+void CDebugBackend::StopTarget()
+{
+   if (PTRACE(PTRACE_KILL, mChildPid, nullptr, nullptr) < 0)
    {
-      mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
+      return;
    }
+
+   mWaitStatus = 0;
+   mChildPid = 0;
+   mTargetRunning = false;
 }
 
 void CDebugBackend::VerifyTarget()
