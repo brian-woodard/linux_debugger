@@ -353,6 +353,12 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
                   printf("\r%.*s\r\n", header->Size, str);
                   break;
                }
+               case DATA_TYPE_STREAM_TARGET_OUTPUT:
+               {
+                  char* str = (char*)&data[sizeof(TBufferHeader)];
+                  printf("\rOUTPUT: %.*s", header->Size, str);
+                  break;
+               }
                case DATA_TYPE_REGISTERS:
                {
                   TRegister* registers = (TRegister*)&data[sizeof(TBufferHeader)];

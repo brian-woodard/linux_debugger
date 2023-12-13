@@ -48,6 +48,8 @@ private:
    void StartTarget();
    void StopTarget();
    void VerifyTarget();
+   void TargetOutput();
+   void InitializeTargetOutput();
 
    void GetSignalInfo();
    void Wait();
@@ -66,6 +68,7 @@ private:
    s32                      mBreakpointHit;
    s32                      mWaitStatus;
    s32                      mWaitOptions;
+   int                      mOutputFd;
    TDebugCommand            mCommand;
    bool                     mRunning;
    bool                     mTargetRunning;

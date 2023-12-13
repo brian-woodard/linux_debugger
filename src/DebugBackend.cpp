@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
 #include "DebugBackend.h"
 #include "DebugUtils.h"
 
@@ -24,6 +25,8 @@
    } \
    retval; \
 })
+
+const char* TargetOutputStr = "tmpOutput";
 
 const char* RegisterStr[] =
 {
@@ -74,6 +77,7 @@ CDebugBackend::CDebugBackend()
      mChildPid(0),
      mBreakpointHit(-1),
      mWaitStatus(0),
+     mOutputFd(0),
      mWaitOptions(0),
      mCommand{},
      mRunning(false),
@@ -518,8 +522,12 @@ void CDebugBackend::Wait()
    {
       mTargetRunning = false;
 
+      TargetOutput();
+
       sprintf(msg, "Target execution exited cleanly");
       PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+
+      InitializeTargetOutput();
 
       // start a new instance
       StartTarget();
@@ -545,6 +553,8 @@ void CDebugBackend::RunTarget()
       return;
    }
 
+   int output_fd = open(TargetOutputStr, O_WRONLY);
+   dup2(output_fd, 1);
    execl(mTarget.c_str(), mTarget.c_str(), nullptr);
 }
 
@@ -577,6 +587,8 @@ void CDebugBackend::StartTarget()
 
       // Wait for child to stop on its first instruction
       Wait();
+
+      mOutputFd = open(TargetOutputStr, O_RDONLY);
 
       //PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
    }
@@ -685,6 +697,32 @@ u8* CDebugBackend::PopData()
    return result;
 }
 
+void CDebugBackend::TargetOutput()
+{
+   u8   buffer[1024];
+   char msg[256];
+
+   int bytes = read(mOutputFd, buffer, sizeof(buffer));
+
+   if (bytes > 0)
+   {
+      sprintf(msg, "%s", buffer);
+      PushData(DATA_TYPE_STREAM_TARGET_OUTPUT, (u8*)msg, strlen(msg));
+   }
+}
+
+void CDebugBackend::InitializeTargetOutput()
+{
+   // create an empty file "TargetOutputStr" to redirect the target output to
+   // TODO: Do this the right way, without system call? use TargetOutputStr
+
+   if (mOutputFd > 0)
+      close(mOutputFd);
+   mOutputFd = 0;
+   system("rm -f tmpOutput");
+   system("touch tmpOutput");
+}
+
 void CDebugBackend::RunDebugger()
 {
    // signal(SIGTERM, SigHandler);
@@ -694,6 +732,8 @@ void CDebugBackend::RunDebugger()
 
    mOutputBuffer = new u8[OUTPUT_BUFFER];
 
+   InitializeTargetOutput();
+
    VerifyTarget();
 
    StartTarget();
@@ -701,6 +741,8 @@ void CDebugBackend::RunDebugger()
    while (mRunning)
    {
       HandleCommand();
+
+      TargetOutput();
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
    }
