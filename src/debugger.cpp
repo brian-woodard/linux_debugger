@@ -266,6 +266,32 @@ TDebugCommand GetCommand(CInputHandler& Input)
 
       return result;
    }
+   else if (strcmp(strings[0], "start") == 0)
+   {
+      if (strings.size() > 1)
+      {
+         printf("Invalid cmd:\r\n");
+         printf("  start\r\n");
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
+      }
+      
+      result.Command = DEBUG_CMD_START;
+      return result;
+   }
+   else if (strcmp(strings[0], "stop") == 0)
+   {
+      if (strings.size() > 1)
+      {
+         printf("Invalid cmd:\r\n");
+         printf("  stop\r\n");
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
+      }
+      
+      result.Command = DEBUG_CMD_STOP;
+      return result;
+   }
 
    printf("Unknown command\r\n");
    result.Command = DEBUG_CMD_UNKNOWN;
