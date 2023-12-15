@@ -6,12 +6,9 @@ TODO:
   * Add attach command line to attach to running process
     * command line: ./debugger attach [pid]
     * command while running: attach (list of pids matching target name)
-    * command while running: be able to change targets
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Add tab completion for commands
   * Add command to show debug output on console, default to off?
-  * Handle a debugee that loops forever, when target is changed, need to stop the current process first
-    or if a re-run is commanded, make sure to stop first debugee
   * Implement DEBUG_CMD_DATA_WRITE to write data?
   * Breakout command parsing into a DebugFrontend class
   * Change Frontend command packaging, right now only one command is allowed "per frame". Have it perform more like the backend

@@ -67,7 +67,6 @@ private:
    pid_t                    mChildPid;
    s32                      mBreakpointHit;
    s32                      mWaitStatus;
-   s32                      mWaitOptions;
    int                      mOutputFd;
    TDebugCommand            mCommand;
    bool                     mRunning;

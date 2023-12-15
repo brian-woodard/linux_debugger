@@ -34,6 +34,7 @@ enum eDebugCommand
 {
    DEBUG_CMD_UNKNOWN,
    DEBUG_CMD_CONTINUE,
+   DEBUG_CMD_INTERRUPT,
    DEBUG_CMD_SET_BREAKPOINT,
    DEBUG_CMD_DELETE_BREAKPOINT,
    DEBUG_CMD_ENABLE_BREAKPOINT,
@@ -85,6 +86,10 @@ struct TDebugCommand
          u8* String;
          u64 Size;
       } String;
+      struct TIntegerData
+      {
+         s64 Value;
+      } Integer;
 
    } Data;
 };
@@ -155,6 +160,7 @@ enum eDataType
    DATA_TYPE_STREAM_TARGET_OUTPUT,
    DATA_TYPE_REGISTERS,
    DATA_TYPE_DATA,
+   DATA_TYPE_PID,
    DATA_TYPE_COUNT
 };
 
