@@ -706,8 +706,20 @@ void CDebugBackend::TargetOutput()
 
    if (bytes > 0)
    {
-      sprintf(msg, "%s", buffer);
-      PushData(DATA_TYPE_STREAM_TARGET_OUTPUT, (u8*)msg, strlen(msg));
+      for (int i = 0, idx = 0; i < bytes; i++)
+      {
+         // stream output one line at a time
+         // TODO: make this safer?
+         if (idx > 0 && buffer[i] == '\n')
+         {
+            PushData(DATA_TYPE_STREAM_TARGET_OUTPUT, (u8*)msg, idx);
+            idx = 0;
+         }
+         else
+         {
+            msg[idx++] = buffer[i];
+         }
+      }
    }
 }
 
