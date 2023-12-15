@@ -78,7 +78,6 @@ CDebugBackend::CDebugBackend()
      mBreakpointHit(-1),
      mWaitStatus(0),
      mOutputFd(0),
-     mWaitOptions(0),
      mCommand{},
      mRunning(false),
      mTargetRunning(false)
@@ -512,11 +511,11 @@ void CDebugBackend::GetSignalInfo()
 
 void CDebugBackend::Wait()
 {
-   char msg[256];
+   char  msg[256];
+   pid_t status;
 
    // wait for debugee to stop
-   mWaitOptions = 0;
-   waitpid(mChildPid, &mWaitStatus, mWaitOptions);
+   status = waitpid(mChildPid, &mWaitStatus, 0);
 
    if (WIFEXITED(mWaitStatus))
    {
@@ -533,16 +532,18 @@ void CDebugBackend::Wait()
       StartTarget();
       return;
    }
-
-   // get some info about the signal that caused the stop
-   GetSignalInfo();
-
-   // check breakpoints
-   int bp = CheckBreakpoints();
-   if (bp != -1)
+   else if (WIFSTOPPED(mWaitStatus))
    {
-      sprintf(msg, "Breakpoint %d hit at 0x%x", bp + 1, mBreakpoints[bp].Address);
-      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      // get some info about the signal that caused the stop
+      GetSignalInfo();
+
+      // check breakpoints
+      int bp = CheckBreakpoints();
+      if (bp != -1)
+      {
+         sprintf(msg, "Breakpoint %d hit at 0x%x", bp + 1, mBreakpoints[bp].Address);
+         PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      }
    }
 }
 
@@ -584,6 +585,7 @@ void CDebugBackend::StartTarget()
 
       sprintf(msg, "Debugging started on %s, pid %d", mTarget.c_str(), mChildPid);
       PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      PushData(DATA_TYPE_PID, (u8*)&mChildPid, sizeof(mChildPid));
 
       // Wait for child to stop on its first instruction
       Wait();

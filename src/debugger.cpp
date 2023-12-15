@@ -31,6 +31,13 @@ TDebugCommand GetCommand(CInputHandler& Input)
 
    Input.GetInput(input);
 
+   if (input[0] == CInputHandler::KEY_CTRL_C)
+   {
+      result.Command = DEBUG_CMD_INTERRUPT;
+      result.Data.Integer.Value = -1; // Ctrl-C interrupt
+      return result;
+   }
+
    // trim newline
    int length = strlen(input);
    if (input[length-1] == '\n')
@@ -301,6 +308,7 @@ TDebugCommand GetCommand(CInputHandler& Input)
 void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
 {
    TDebugCommand cmd;
+   pid_t         debug_pid = 0;
 
    // wait for debug backend to startup by waiting for a cmd processed
    while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
@@ -312,12 +320,17 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
    {
       cmd = GetCommand(Input);
 
-      if (cmd.Command != DEBUG_CMD_UNKNOWN)
+      if (cmd.Command == DEBUG_CMD_INTERRUPT && cmd.Data.Integer.Value == -1)
+      {
+         //ptrace(PTRACE_INTERRUPT, debug_pid, 0, 0);
+         kill(debug_pid, SIGINT);
+      }
+      else if (cmd.Command != DEBUG_CMD_UNKNOWN)
       {
          Debugger.SetCommand(cmd);
 
          // wait for command to be processed by backend
-         while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
+         //while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
          {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
          }
@@ -365,6 +378,7 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
                   printf("Register values:\r\n");
                   for (int i = 0; i < REGISTER_COUNT; i++)
                      printf("  %s: %.*s 0x%08x\r\n", RegisterStr[i], 8 - strlen(RegisterStr[i]), "          ", registers->RegArray[i]);
+                  break;
                }
                case DATA_TYPE_DATA:
                {
@@ -375,6 +389,13 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
 
                   printf("Data read at address 0x%x bytes %d:\r\n", address, header->Size-sizeof(u64));
                   printf("%s\r\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), "\r\n", address));
+                  break;
+               }
+               case DATA_TYPE_PID:
+               {
+                  data += sizeof(TBufferHeader);
+                  debug_pid = *(pid_t*)data;
+                  break;
                }
                default:
                   break;

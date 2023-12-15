@@ -32,7 +32,7 @@ int CInputHandler::GetInput(char* String)
    ClearLine();
    PutLine();
 
-   while (key != KEY_ENTER)
+   while ((key != KEY_ENTER && key != KEY_CTRL_C))
    {
       key = ReadInput();
 
@@ -51,6 +51,9 @@ int CInputHandler::GetInput(char* String)
       String[i] = mLine[i];
    }
    String[i] = 0;
+
+   if (mLine[0] == KEY_CTRL_C)
+      PutLine("\r\nQuit\r\n");
 
    ClearLine();
    PutLine("\r\n");
@@ -282,6 +285,8 @@ void CInputHandler::ProcessKeyPress(int Key)
    {
       case KEY_CTRL_C:
          // TODO: Handle Ctrl-C
+         ClearLine();
+         mLine[0] = (char)Key;
          break;
       case KEY_BACKSPACE:
       case KEY_DEL:

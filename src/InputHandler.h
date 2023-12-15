@@ -19,8 +19,6 @@ public:
    int DisableRawMode();
    int EnableRawMode();
 
-private:
-
    enum eSpecialKeys
    {
       KEY_CTRL_C = 3,
@@ -36,6 +34,8 @@ private:
       KEY_PAGE_UP,
       KEY_PAGE_DOWN
    };
+
+private:
 
    void AddCharToLine(int Key);
    void RemoveCharFromLine(int Key);
