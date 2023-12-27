@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include "DebugUtils.h"
 
 TBuffer ReadEntireFile(const char* Filename)
@@ -28,6 +29,48 @@ TBuffer ReadEntireFile(const char* Filename)
       }
 
       fclose(File);
+   }
+
+   return Result;
+}
+
+TBuffer ReadEntireProcFile(const char* Filename)
+{
+   size_t  bytes_to_read = 128;
+   size_t  index = 0;
+   TBuffer Result = {};
+
+   int File = open(Filename, O_RDONLY);
+
+   if (File != -1)
+   {
+      Result.Data = (u8*)malloc(bytes_to_read);
+
+      int bytes = read(File, &Result.Data[index], bytes_to_read);
+
+      while (bytes == bytes_to_read)
+      {
+         Result.Size += bytes;
+         Result.Data = (u8*)realloc(Result.Data, Result.Size + bytes_to_read);
+         if (Result.Data == nullptr)
+         {
+            Result.Size = 0;
+            return Result;
+         }
+      }
+
+      if (bytes > 0 && bytes != bytes_to_read)
+      {
+         Result.Size += bytes;
+      }
+
+      // strip newline off end
+      if (Result.Data[Result.Size-1] == '\n')
+      {
+         Result.Data[--Result.Size] = 0;
+      }
+
+      close(File);
    }
 
    return Result;

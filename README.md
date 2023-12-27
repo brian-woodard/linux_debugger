@@ -4,7 +4,6 @@ A simple Linux debugger, mainly for me to learn more about ELF / DWARF on Linux.
 
 TODO:
   * Add attach command line to attach to running process
-    * command line: ./debugger attach [pid]
     * command while running: attach (list of pids matching target name)
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Add tab completion for commands

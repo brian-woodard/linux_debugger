@@ -617,6 +617,51 @@ void CDebugBackend::StartTarget()
    }
 }
 
+void CDebugBackend::AttachTarget()
+{
+   char msg[256];
+
+   mBreakpointHit = -1;
+
+   if (!mTargetRunning && mTarget.length())
+   {
+      PTRACE(PTRACE_ATTACH, mChildPid, nullptr, nullptr);
+
+      sprintf(msg, "Debugging attached to %s, pid %d", mTarget.c_str(), mChildPid);
+      PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
+      PushData(DATA_TYPE_PID, (u8*)&mChildPid, sizeof(mChildPid));
+
+      // Wait for child to stop on its first instruction
+      Wait();
+
+      mOutputFd = open(TargetOutputStr, O_RDONLY);
+      mTargetRunning = true;
+
+      //PTRACE(PTRACE_SETOPTIONS, mChildPid, nullptr, PTRACE_O_TRACEEXIT);
+   }
+
+   if (mBreakpoints.size() > 0)
+   {
+      // set all breakpoints on new instance
+      size_t num_breakpoints = mBreakpoints.size();
+      for (size_t i = 0; i < num_breakpoints; i++)
+      {
+         AddBreakpoint(mBreakpoints[i].Address);
+         if (!mBreakpoints[i].Enabled)
+         {
+            size_t new_bp_idx = mBreakpoints.size();
+            DisableBreakpoint(new_bp_idx);
+         }
+      }
+
+      // delete old breakpoints in reverse order
+      for (size_t i = num_breakpoints; i > 0; i--)
+      {
+         mBreakpoints.erase(mBreakpoints.begin() + (i - 1));
+      }
+   }
+}
+
 void CDebugBackend::StopTarget()
 {
    if (PTRACE(PTRACE_KILL, mChildPid, nullptr, nullptr) < 0)
@@ -750,7 +795,10 @@ void CDebugBackend::RunDebugger()
 
    VerifyTarget();
 
-   StartTarget();
+   if (mChildPid > 0)
+      AttachTarget();
+   else
+      StartTarget();
 
    while (mRunning)
    {
@@ -777,5 +825,35 @@ bool CDebugBackend::Run(const char* Filename)
    }
 
    return true;
+}
+
+bool CDebugBackend::Attach(pid_t ProcessId)
+{
+   std::string filename = "/proc/";
+   filename += std::to_string(ProcessId);
+   filename += "/comm";
+
+   TBuffer buffer = ReadEntireProcFile(filename.c_str());
+
+   if (buffer.Size)
+   {
+      mTarget = (char*)buffer.Data;
+      mChildPid = ProcessId;
+
+      free(buffer.Data);
+
+      // start thread to run debugger
+      if (!mThread.joinable())
+      {
+         mRunning = true;
+         mThread = std::thread(&CDebugBackend::RunDebugger, this);
+      }
+
+      return true;
+   }
+   else
+   {
+      return false;
+   }
 }
 

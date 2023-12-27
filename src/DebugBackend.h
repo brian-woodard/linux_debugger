@@ -19,6 +19,7 @@ public:
 
    bool IsRunning() const { return mRunning; }
    bool Run(const char* Filename);
+   bool Attach(pid_t ProcessId);
 
    u8* PopData();
 
@@ -46,6 +47,7 @@ private:
    void RunTarget();
    void RunDebugger();
    void StartTarget();
+   void AttachTarget();
    void StopTarget();
    void VerifyTarget();
    void TargetOutput();
