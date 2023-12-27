@@ -330,10 +330,7 @@ void RunConsole(CDebugBackend& Debugger, CInputHandler& Input)
          Debugger.SetCommand(cmd);
 
          // wait for command to be processed by backend
-         //while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
-         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-         }
+         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
          // process any data output from backend
          u8* data;
@@ -409,16 +406,48 @@ int main(int argc, char** argv)
 {
    CDebugBackend debugger;
    CInputHandler input("dbg> ", stdout);
+   bool          attach = false;
+   bool          status = false;
 
    if (argc < 2)
    {
       fprintf(stderr, "Expected a program name as argument\r\n");
       return -1;
    }
+   else if (argc == 3)
+   {
+      if (strcmp(argv[1], "attach") == 0)
+      {
+         attach = true;
+      }
+      else
+      {
+         fprintf(stderr, "Expected a process id after attach\r\n");
+         return -1;
+      }
+   }
 
-   debugger.Run(argv[1]);
+   if (attach)
+   {
+      status = debugger.Attach(std::atoi(argv[2]));
+      if (!status)
+      {
+         fprintf(stderr, "Failed to attach to process %s\r\n", argv[2]);
+         return -1;
+      }
+   }
+   else
+   {
+      status = debugger.Run(argv[1]);
+      if (!status)
+      {
+         fprintf(stderr, "Failed to start debugger on %s\r\n", argv[1]);
+         return -1;
+      }
+   }
 
-   RunConsole(debugger, input);
+   if (status)
+      RunConsole(debugger, input);
 
    return 0;
 }
