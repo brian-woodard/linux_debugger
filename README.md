@@ -3,8 +3,7 @@
 A simple Linux debugger, mainly for me to learn more about ELF / DWARF on Linux. Who knows if this will ever be a usable application.
 
 TODO:
-  * Add attach command line to attach to running process
-    * command while running: attach (list of pids matching target name)
+  * Fix attach command with a bad pid, debugger hangs
   * Add help command, list all commands, should be able to type "help [command]" to get more in depth usage
   * Add tab completion for commands
   * Add command to show debug output on console, default to off?

@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "DebugUtils.h"
 
 TBuffer ReadEntireFile(const char* Filename)
