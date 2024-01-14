@@ -299,6 +299,19 @@ TDebugCommand GetCommand(CInputHandler& Input)
       result.Command = DEBUG_CMD_STOP;
       return result;
    }
+   else if (strcmp(strings[0], "attach") == 0)
+   {
+      if (strings.size() != 2)
+      {
+         printf("Invalid cmd: attach [pid]\r\n");
+         result.Command = DEBUG_CMD_UNKNOWN;
+         return result;
+      }
+
+      result.Command = DEBUG_CMD_ATTACH;
+      result.Data.Pid.Value = strtol(strings[1], 0, 10);
+      return result;
+   }
 
    printf("Unknown command\r\n");
    result.Command = DEBUG_CMD_UNKNOWN;

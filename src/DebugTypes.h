@@ -53,6 +53,7 @@ enum eDebugCommand
    DEBUG_CMD_START,
    DEBUG_CMD_STOP,
    DEBUG_CMD_QUIT,
+   DEBUG_CMD_ATTACH,
    DEBUG_CMD_PROCESSED,
    DEBUG_CMD_COUNT
 };
@@ -90,6 +91,10 @@ struct TDebugCommand
       {
          s64 Value;
       } Integer;
+      struct TPid
+      {
+         int Value;
+      } Pid;
 
    } Data;
 };

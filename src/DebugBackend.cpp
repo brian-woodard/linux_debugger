@@ -304,6 +304,20 @@ void CDebugBackend::SetCommand(TDebugCommand Command)
          mThread.join();
       mCommand.Command = DEBUG_CMD_PROCESSED;
    }
+   else if (mCommand.Command == DEBUG_CMD_ATTACH)
+   {
+      mRunning = false;
+      if (mThread.joinable())
+         mThread.join();
+      Attach(mCommand.Data.Pid.Value);
+      // {
+      //    char msg[256];
+      //    sprintf(msg, "Could not attach to %d, starting debug on target %s", mCommand.Data.Pid.Value, mTarget.c_str());
+      //    PushData(DATA_TYPE_STREAM_ERROR, (u8*)msg, strlen(msg));
+      //    Run(mTarget.c_str());
+      // }
+      mCommand.Command = DEBUG_CMD_PROCESSED;
+   }
    mMutex.unlock();
 }
 
