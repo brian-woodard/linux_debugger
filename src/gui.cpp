@@ -4,106 +4,33 @@
 #include "imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
 #include <stdio.h>
+#include <string>
+#include <thread>
 
-GLFWwindow *window = nullptr;
-CDebugBackend debug_backend;
+// GLFWwindow *window = nullptr;
+// CDebugBackend debug_backend;
 
-//-----------------------------------------------------------------------------
-// [SECTION] Example App: Main Menu Bar / ShowExampleAppMainMenuBar()
-//-----------------------------------------------------------------------------
-// - ShowExampleAppMainMenuBar()
-// - ShowExampleMenuFile()
-//-----------------------------------------------------------------------------
+struct TGuiState
+{
+   GLFWwindow*   Window;
+   std::string   Target;
+   CDebugBackend Backend;
+};
+
+TGuiState gui_state;
 
 // Note that shortcuts are currently provided for display only
 // (future version will add explicit flags to BeginMenu() to request processing shortcuts)
-static void ShowExampleMenuFile()
+static void ShowMenuFile()
 {
-   ImGui::MenuItem("(demo menu)", NULL, false, false);
-   if (ImGui::MenuItem("New"))
+   if (ImGui::MenuItem("Set Target", nullptr, false, !gui_state.Backend.IsRunning()))
    {
-   }
-   if (ImGui::MenuItem("Open", "Ctrl+O"))
-   {
-   }
-   if (ImGui::BeginMenu("Open Recent"))
-   {
-      ImGui::MenuItem("fish_hat.c");
-      ImGui::MenuItem("fish_hat.inl");
-      ImGui::MenuItem("fish_hat.h");
-      if (ImGui::BeginMenu("More.."))
-      {
-         ImGui::MenuItem("Hello");
-         ImGui::MenuItem("Sailor");
-         if (ImGui::BeginMenu("Recurse.."))
-         {
-            ShowExampleMenuFile();
-            ImGui::EndMenu();
-         }
-         ImGui::EndMenu();
-      }
-      ImGui::EndMenu();
-   }
-   if (ImGui::MenuItem("Save", "Ctrl+S"))
-   {
-   }
-   if (ImGui::MenuItem("Save As.."))
-   {
-   }
-
-   ImGui::Separator();
-   if (ImGui::BeginMenu("Options"))
-   {
-      static bool enabled = true;
-      ImGui::MenuItem("Enabled", "", &enabled);
-      ImGui::BeginChild("child", ImVec2(0, 60), true);
-      for (int i = 0; i < 10; i++)
-         ImGui::Text("Scrolling Text %d", i);
-      ImGui::EndChild();
-      static float f = 0.5f;
-      static int n = 0;
-      ImGui::SliderFloat("Value", &f, 0.0f, 1.0f);
-      ImGui::InputFloat("Input", &f, 0.1f);
-      ImGui::Combo("Combo", &n, "Yes\0No\0Maybe\0\0");
-      ImGui::EndMenu();
-   }
-
-   if (ImGui::BeginMenu("Colors"))
-   {
-      float sz = ImGui::GetTextLineHeight();
-      for (int i = 0; i < ImGuiCol_COUNT; i++)
-      {
-         const char *name = ImGui::GetStyleColorName((ImGuiCol)i);
-         ImVec2 p = ImGui::GetCursorScreenPos();
-         ImGui::GetWindowDrawList()->AddRectFilled(p, ImVec2(p.x + sz, p.y + sz), ImGui::GetColorU32((ImGuiCol)i));
-         ImGui::Dummy(ImVec2(sz, sz));
-         ImGui::SameLine();
-         ImGui::MenuItem(name);
-      }
-      ImGui::EndMenu();
-   }
-
-   // Here we demonstrate appending again to the "Options" menu (which we already created above)
-   // Of course in this demo it is a little bit silly that this function calls BeginMenu("Options") twice.
-   // In a real code-base using it would make senses to use this feature from very different code locations.
-   if (ImGui::BeginMenu("Options")) // <-- Append!
-   {
-      static bool b = true;
-      ImGui::Checkbox("SomeOption", &b);
-      ImGui::EndMenu();
-   }
-
-   if (ImGui::BeginMenu("Disabled", false)) // Disabled
-   {
-      IM_ASSERT(0);
-   }
-   if (ImGui::MenuItem("Checked", NULL, true))
-   {
+      printf(">>> get target name\n");
    }
    ImGui::Separator();
    if (ImGui::MenuItem("Quit", "Alt+F4"))
    {
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
+      glfwSetWindowShouldClose(gui_state.Window, GLFW_TRUE);
    }
 }
 
@@ -111,33 +38,13 @@ static void ShowExampleMenuFile()
 // Note the difference between BeginMainMenuBar() and BeginMenuBar():
 // - BeginMenuBar() = menu-bar inside current window (which needs the ImGuiWindowFlags_MenuBar flag!)
 // - BeginMainMenuBar() = helper to create menu-bar-sized window at the top of the main viewport + call BeginMenuBar() into it.
-static void ShowExampleAppMainMenuBar()
+static void ShowAppMainMenuBar()
 {
    if (ImGui::BeginMainMenuBar())
    {
       if (ImGui::BeginMenu("File"))
       {
-         ShowExampleMenuFile();
-         ImGui::EndMenu();
-      }
-      if (ImGui::BeginMenu("Edit"))
-      {
-         if (ImGui::MenuItem("Undo", "CTRL+Z"))
-         {
-         }
-         if (ImGui::MenuItem("Redo", "CTRL+Y", false, false))
-         {
-         } // Disabled item
-         ImGui::Separator();
-         if (ImGui::MenuItem("Cut", "CTRL+X"))
-         {
-         }
-         if (ImGui::MenuItem("Copy", "CTRL+C"))
-         {
-         }
-         if (ImGui::MenuItem("Paste", "CTRL+V"))
-         {
-         }
+         ShowMenuFile();
          ImGui::EndMenu();
       }
       ImGui::EndMainMenuBar();
@@ -151,6 +58,9 @@ static void glfw_error_callback(int error, const char *description)
 
 int gui_init(const char *Title)
 {
+   gui_state.Window = nullptr;
+   gui_state.Target = "";
+
    glfwSetErrorCallback(glfw_error_callback);
    if (!glfwInit())
       return 0;
@@ -161,11 +71,11 @@ int gui_init(const char *Title)
    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
    // Create window with graphics context
-   window = glfwCreateWindow(1280, 720, Title, NULL, NULL);
-   if (window == NULL)
+   gui_state.Window = glfwCreateWindow(1280, 720, Title, NULL, NULL);
+   if (gui_state.Window == NULL)
       return 0;
 
-   glfwMakeContextCurrent(window);
+   glfwMakeContextCurrent(gui_state.Window);
    glfwSwapInterval(1); // Enable vsync
 
    // Setup Dear ImGui context
@@ -193,10 +103,108 @@ int gui_init(const char *Title)
    }
 
    // Setup Platform/Renderer backends
-   ImGui_ImplGlfw_InitForOpenGL(window, true);
+   ImGui_ImplGlfw_InitForOpenGL(gui_state.Window, true);
    ImGui_ImplOpenGL3_Init(glsl_version);
 
    return 1;
+}
+
+
+void RunDebugger(CDebugBackend& Debugger)
+{
+   TDebugCommand cmd;
+   pid_t         debug_pid = 0;
+
+   // // wait for debug backend to startup by waiting for a cmd processed
+   // while ((cmd.Command = Debugger.GetCommand()) != DEBUG_CMD_PROCESSED)
+   // {
+   //    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+   // }
+
+   // while (Debugger.IsRunning())
+   // {
+   //    cmd = GetCommand(Input);
+
+   //    if (cmd.Command == DEBUG_CMD_INTERRUPT && cmd.Data.Integer.Value == -1)
+   //    {
+   //       //ptrace(PTRACE_INTERRUPT, debug_pid, 0, 0);
+   //       kill(debug_pid, SIGINT);
+   //    }
+   //    else if (cmd.Command != DEBUG_CMD_UNKNOWN)
+   //    {
+   //       Debugger.SetCommand(cmd);
+
+   //       // wait for command to be processed by backend
+   //       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+   //       // process any data output from backend
+   //       u8* data;
+   //       while ((data = Debugger.PopData()))
+   //       {
+   //          TBufferHeader* header = (TBufferHeader*)data;
+   //          switch (header->DataType)
+   //          {
+   //             case DATA_TYPE_STREAM_ERROR:
+   //             {
+   //                char* str = (char*)&data[sizeof(TBufferHeader)];
+   //                printf("ERROR: %.*s\r\n", header->Size, str);
+   //                break;
+   //             }
+   //             case DATA_TYPE_STREAM_WARNING:
+   //             {
+   //                char* str = (char*)&data[sizeof(TBufferHeader)];
+   //                printf("WARNING: %.*s\r\n", header->Size, str);
+   //                break;
+   //             }
+   //             case DATA_TYPE_STREAM_DEBUG:
+   //             {
+   //                char* str = (char*)&data[sizeof(TBufferHeader)];
+   //                printf("DEBUG: %.*s\r\n", header->Size, str);
+   //                break;
+   //             }
+   //             case DATA_TYPE_STREAM_INFO:
+   //             {
+   //                char* str = (char*)&data[sizeof(TBufferHeader)];
+   //                printf("\r%.*s\r\n", header->Size, str);
+   //                break;
+   //             }
+   //             case DATA_TYPE_STREAM_TARGET_OUTPUT:
+   //             {
+   //                char* str = (char*)&data[sizeof(TBufferHeader)];
+   //                printf("\rOUTPUT: %.*s\r\n", header->Size, str);
+   //                break;
+   //             }
+   //             case DATA_TYPE_REGISTERS:
+   //             {
+   //                TRegister* registers = (TRegister*)&data[sizeof(TBufferHeader)];
+   //                printf("Register values:\r\n");
+   //                for (int i = 0; i < REGISTER_COUNT; i++)
+   //                   printf("  %s: %.*s 0x%08x\r\n", RegisterStr[i], 8 - strlen(RegisterStr[i]), "          ", registers->RegArray[i]);
+   //                break;
+   //             }
+   //             case DATA_TYPE_DATA:
+   //             {
+   //                data += sizeof(TBufferHeader);
+
+   //                u64 address = *(u64*)data;
+   //                data += sizeof(u64);
+
+   //                printf("Data read at address 0x%x bytes %d:\r\n", address, header->Size-sizeof(u64));
+   //                printf("%s\r\n", CPrintData::GetDataAsString((char*)data, header->Size-sizeof(u64), "\r\n", address));
+   //                break;
+   //             }
+   //             case DATA_TYPE_PID:
+   //             {
+   //                data += sizeof(TBufferHeader);
+   //                debug_pid = *(pid_t*)data;
+   //                break;
+   //             }
+   //             default:
+   //                break;
+   //          }
+   //       }
+   //    }
+   // }
 }
 
 void gui_run()
@@ -204,7 +212,7 @@ void gui_run()
    // Our state
    ImVec4 clear_color = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
 
-   while (!glfwWindowShouldClose(window))
+   while (!glfwWindowShouldClose(gui_state.Window))
    {
       // Poll and handle events (inputs, window resize, etc.)
       // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
@@ -213,17 +221,20 @@ void gui_run()
       // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
       glfwPollEvents();
 
+      RunDebugger(gui_state.Backend);
+
       // Start the Dear ImGui frame
       ImGui_ImplOpenGL3_NewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
 
-      ShowExampleAppMainMenuBar();
+      ShowAppMainMenuBar();
 
       // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
       {
          static float f = 0.0f;
          static int counter = 0;
+         static bool show_demo = false;
 
          ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
 
@@ -231,6 +242,12 @@ void gui_run()
 
          ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
          ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+
+         if (ImGui::Button("Demo"))
+            show_demo = !show_demo;
+
+         if (show_demo)
+            ImGui::ShowDemoWindow();
 
          if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
             counter++;
@@ -244,7 +261,7 @@ void gui_run()
       // Rendering
       ImGui::Render();
       int display_w, display_h;
-      glfwGetFramebufferSize(window, &display_w, &display_h);
+      glfwGetFramebufferSize(gui_state.Window, &display_w, &display_h);
       glViewport(0, 0, display_w, display_h);
       glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
       glClear(GL_COLOR_BUFFER_BIT);
@@ -253,19 +270,21 @@ void gui_run()
       // Update and Render additional Platform Windows
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
-      glfwMakeContextCurrent(window);
+      glfwMakeContextCurrent(gui_state.Window);
 
-      glfwSwapBuffers(window);
+      glfwSwapBuffers(gui_state.Window);
    }
 }
 
 void gui_shutdown()
 {
+   gui_state.Backend.Quit();
+
    // Cleanup
    ImGui_ImplOpenGL3_Shutdown();
    ImGui_ImplGlfw_Shutdown();
    ImGui::DestroyContext();
 
-   glfwDestroyWindow(window);
+   glfwDestroyWindow(gui_state.Window);
    glfwTerminate();
 }
