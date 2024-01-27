@@ -1,42 +1,22 @@
 
 EXE = ../bin/debugger
 IMGUI_DIR = ../vendor/imgui
-SOURCES = main.cpp InputHandler.cpp
-SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
-SOURCES += $(IMGUI_DIR)/backends/imgui_impl_glfw.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
-OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 
 LIBS = -lGL `pkg-config --static --libs glfw3`
 CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends `pkg-config --cflags glfw3`
 
-##---------------------------------------------------------------------
-## BUILD RULES
-##---------------------------------------------------------------------
-
-%.o:%.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-%.o:$(IMGUI_DIR)/%.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-%.o:$(IMGUI_DIR)/backends/%.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-all: $(EXE)
-	@echo Build complete
-	make console
-	make elfdump
+all:
+	g++ $(CXXFLAGS) main.cpp -o $(EXE) $(LIBS)
+#make console
+#make elfdump
 
 console: debugger.cpp
-	g++ -g debugger.cpp -o debugger
+	g++ debugger.cpp -o debugger
 
 elfdump: elfdump.cpp PrintData.h PrintData.cpp
 	g++ elfdump.cpp -o elfdump
 
-$(EXE): $(OBJS)
-	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
-
 clean:
-	rm -f $(EXE) $(OBJS)
+	rm -f $(EXE)
 	rm -f debugger
 	rm -f elfdump

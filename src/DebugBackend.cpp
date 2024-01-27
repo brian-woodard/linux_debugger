@@ -462,6 +462,7 @@ void CDebugBackend::HandleCommand()
             sprintf(msg, "No Target is defined");
             PushData(DATA_TYPE_STREAM_INFO, (u8*)msg, strlen(msg));
          }
+         //PushData(DATA_TYPE_DATA, (u8*)mTarget.c_str(), mTarget.length() + sizeof(u64));
          break;
       case DEBUG_CMD_SET_TARGET:
          if (mCommand.Data.String.String)
@@ -871,3 +872,10 @@ bool CDebugBackend::Attach(pid_t ProcessId)
    }
 }
 
+void CDebugBackend::Quit()
+{
+   TDebugCommand cmd;
+
+   cmd.Command = DEBUG_CMD_QUIT;
+   SetCommand(cmd);
+}

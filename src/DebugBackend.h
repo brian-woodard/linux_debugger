@@ -21,6 +21,8 @@ public:
    bool Run(const char* Filename);
    bool Attach(pid_t ProcessId);
 
+   void Quit();
+
    u8* PopData();
 
 private:
